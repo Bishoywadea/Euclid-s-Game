@@ -5,9 +5,9 @@ import random
 from enum import Enum
 import time
 import math
+from abc import ABC, abstractmethod
 from gettext import gettext as _
 from config import Theme
-from player import Player, Bot, Difficulty
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
@@ -15,10 +15,122 @@ from gi.repository import Gtk
 WIDTH, HEIGHT = 1200, 800
 FPS = 60
 
+# Difficulty levels
+class Difficulty(Enum):
+    EASY = 1
+    MEDIUM = 2
+    EXPERT = 3
+
 # Game modes
 class GameMode(Enum):
     VS_BOT = 1
     LOCAL_MULTIPLAYER = 2
+
+# Player base class
+class Player(ABC):
+    def __init__(self, name, player_id):
+        self.name = name
+        self.player_id = player_id
+    
+    @abstractmethod
+    def get_move(self, game_state):
+        pass
+
+# Human player
+class HumanPlayer(Player):
+    def __init__(self, name="Player"):
+        super().__init__(name, 1)
+    
+    def get_move(self, game_state):
+        return None
+
+# Bot players
+class Bot(Player):
+    def __init__(self, difficulty=Difficulty.MEDIUM):
+        self.difficulty = difficulty
+        name = f"Bot ({difficulty.name})"
+        super().__init__(name, 2)
+    
+    def get_move(self, game_state):
+        if self.difficulty == Difficulty.EASY:
+            return self._easy_move(game_state)
+        elif self.difficulty == Difficulty.MEDIUM:
+            return self._medium_move(game_state)
+        else:
+            return self._expert_move(game_state)
+    
+    def _easy_move(self, game_state):
+        valid_moves = self._get_valid_moves(game_state)
+        if valid_moves:
+            return random.choice(valid_moves)
+        return None
+    
+    def _medium_move(self, game_state):
+        valid_moves = self._get_valid_moves(game_state)
+        if not valid_moves:
+            return None
+        
+        for move in valid_moves:
+            temp_numbers = game_state['active_numbers'].copy()
+            diff = abs(move[0] - move[1])
+            temp_numbers.append(diff)
+            
+            opponent_moves = self._get_valid_moves({'active_numbers': temp_numbers})
+            if not opponent_moves:
+                return move
+        
+        moves_with_diff = [(move, abs(move[0] - move[1])) for move in valid_moves]
+        moves_with_diff.sort(key=lambda x: x[1])
+        return moves_with_diff[0][0]
+    
+    def _expert_move(self, game_state):
+        valid_moves = self._get_valid_moves(game_state)
+        if not valid_moves:
+            return None
+        
+        best_move = None
+        best_value = float('-inf')
+        
+        for move in valid_moves:
+            value = self._minimax(game_state, move, depth=4, maximizing=False)
+            if value > best_value:
+                best_value = value
+                best_move = move
+        
+        return best_move
+    
+    def _minimax(self, game_state, move, depth, maximizing):
+        temp_numbers = game_state['active_numbers'].copy()
+        diff = abs(move[0] - move[1])
+        temp_numbers.append(diff)
+        new_state = {'active_numbers': temp_numbers}
+        
+        moves = self._get_valid_moves(new_state)
+        if not moves or depth == 0:
+            return len(moves) if maximizing else -len(moves)
+        
+        if maximizing:
+            max_eval = float('-inf')
+            for next_move in moves:
+                eval_score = self._minimax(new_state, next_move, depth - 1, False)
+                max_eval = max(max_eval, eval_score)
+            return max_eval
+        else:
+            min_eval = float('inf')
+            for next_move in moves:
+                eval_score = self._minimax(new_state, next_move, depth - 1, True)
+                min_eval = min(min_eval, eval_score)
+            return min_eval
+    
+    def _get_valid_moves(self, game_state):
+        valid_moves = []
+        numbers = game_state['active_numbers']
+        for i in range(len(numbers)):
+            for j in range(i + 1, len(numbers)):
+                diff = abs(numbers[i] - numbers[j])
+                if diff not in numbers:
+                    valid_moves.append((numbers[i], numbers[j]))
+        return valid_moves
 
 class Game(Gtk.DrawingArea):
     def __init__(self):
@@ -65,7 +177,7 @@ class Game(Gtk.DrawingArea):
     def set_canvas(self, canvas):
         self.canvas = canvas
         if self.screen:
-            pg.display.set_caption(_("Euclid's Game"))
+            pg.display.set_caption(_("1-Euclid's Game"))
 
     def toggle_help(self):
         self.show_help = not self.show_help
@@ -89,7 +201,7 @@ class Game(Gtk.DrawingArea):
             self.screen_width = WIDTH
             self.screen_height = HEIGHT
             self.screen = pg.display.set_mode((WIDTH, HEIGHT))
-            pg.display.set_caption("Euclid's Game")
+            pg.display.set_caption("2-Euclid's Game")
         
         # Initialize fonts after pygame is fully initialized
         self.font_small = pg.font.Font(None, 24)
@@ -410,7 +522,7 @@ class Game(Gtk.DrawingArea):
         
         # Help content
         help_lines = [
-            _("Euclid's Game Rules:"),
+            _("3-Euclid's Game Rules:"),
             "",
             _("1. Players take turns selecting two numbers from the board"),
             _("2. Calculate the absolute difference between the two numbers"),
@@ -823,6 +935,9 @@ class Game(Gtk.DrawingArea):
         self.draw_info_panel(screen)
         self.draw_move_history_panel(screen)
         
+        # Bottom control bar
+        self.draw_control_bar(screen)
+        
         # Selected numbers display
         if self.selected_numbers:
             self.draw_selection_display(screen)
@@ -865,14 +980,14 @@ class Game(Gtk.DrawingArea):
         screen.blit(header_surface, header_rect)
         
         # Game title with glow
-        title_glow = self.font_large.render("Euclid's Game", True, colors['PRIMARY'])
+        title_glow = self.font_large.render("5-Euclid's Game", True, colors['PRIMARY'])
         for i in range(3):
             glow_surface = pg.Surface(title_glow.get_size(), pg.SRCALPHA)
             glow_surface.blit(title_glow, (0, 0))
             glow_surface.set_alpha(50 - i * 15)
             screen.blit(glow_surface, (20 - i, 25 - i))
         
-        title_surface = self.font_large.render("Euclid's Game", True, colors['TEXT'])
+        title_surface = self.font_large.render("6-Euclid's Game", True, colors['TEXT'])
         screen.blit(title_surface, (20, 25))
         
         # Player turn indicator
@@ -1222,6 +1337,51 @@ class Game(Gtk.DrawingArea):
         
         # Action buttons
         self.draw_game_over_buttons(screen, panel_rect, current_time)
+
+    def draw_control_bar(self, screen):
+        """Draw bottom control bar with action buttons"""
+        colors = self.theme
+        
+        bar_height = 60
+        bar_rect = pg.Rect(0, self.screen_height - bar_height, self.screen_width, bar_height)
+        
+        # Background
+        bar_surface = pg.Surface((bar_rect.width, bar_rect.height), pg.SRCALPHA)
+        pg.draw.rect(bar_surface, (*colors['CARD_BG'][:3], 180), 
+                    (0, 0, bar_rect.width, bar_rect.height))
+        screen.blit(bar_surface, bar_rect)
+        
+        # Control buttons
+        button_y = self.screen_height - 45
+        buttons = [
+            ("Menu (ESC)", pg.K_ESCAPE, 50),
+            ("Theme (T)", pg.K_t, 150),
+            ("Help (H)", pg.K_h, 250),
+            ("Undo (U)", pg.K_u, 350),
+        ]
+        
+        for text, key, x in buttons:
+            button_rect = pg.Rect(x, button_y, 80, 30)
+            
+            # Check if button is active
+            is_active = True
+            if text.startswith("Undo") and len(self.move_history) <= 0:
+                is_active = False
+            
+            # Draw button
+            if is_active:
+                pg.draw.rect(screen, colors['GLASS'], button_rect, border_radius=15)
+                pg.draw.rect(screen, colors['PRIMARY'], button_rect, 1, border_radius=15)
+                text_color = colors['TEXT']
+            else:
+                pg.draw.rect(screen, colors['GRAY'], button_rect, border_radius=15)
+                text_color = colors['TEXT_MUTED']
+            
+            # Button text
+            font_size = self.font_small
+            text_surface = font_size.render(text.split(' ')[0], True, text_color)
+            text_rect = text_surface.get_rect(center=button_rect.center)
+            screen.blit(text_surface, text_rect)
 
     def draw_glass_panel(self, screen, rect, title, accent_color):
         """Draw a reusable glass-style panel"""
