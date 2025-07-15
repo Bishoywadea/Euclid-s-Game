@@ -8,6 +8,8 @@ from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
+from sugar3.graphics.palette import Palette
+from gettext import gettext as _
 
 import sugargame.canvas
 from game import Game
@@ -37,6 +39,11 @@ class Euclids(activity.Activity):
         activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, -1)
 
+        menu_button = ToolButton('go-home')
+        menu_button.set_tooltip(_('Main Menu'))
+        menu_button.connect("clicked", self._reset_game)
+        toolbar_box.toolbar.insert(menu_button, -1)
+        
         theme_button = ToolButton("camera")
         theme_button.set_tooltip("Toggle Theme")
         theme_button.connect("clicked", self._toggle_theme)
@@ -59,6 +66,9 @@ class Euclids(activity.Activity):
 
     def _show_help(self, button):
         self.game.toggle_help()
+
+    def _reset_game(self, button):
+        self.game.handle_game_over_click()
 
     def _toggle_theme(self, button):
         self.game.toggle_theme()

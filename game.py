@@ -311,8 +311,7 @@ class Game(Gtk.DrawingArea):
                             if self.make_move():
                                 self.check_game_over()
 
-    def handle_game_over_click(self, mouse_pos):
-        button_rect = pg.Rect(self.screen_width // 2 - 100, self.screen_height // 2 + 50, 200, 60)
+    def handle_game_over_click(self):
         self.show_menu = True
 
     def update(self, dt):
