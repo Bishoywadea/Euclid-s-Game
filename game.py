@@ -76,7 +76,7 @@ class Game(Gtk.DrawingArea):
     def set_canvas(self, canvas):
         self.canvas = canvas
         if self.screen:
-            pg.display.set_caption(_("1-Euclid's Game"))
+            pg.display.set_caption(_("Euclid's Game"))
 
     def toggle_help(self):
         self.show_help = not self.show_help
@@ -96,7 +96,7 @@ class Game(Gtk.DrawingArea):
             self.screen_width = WIDTH
             self.screen_height = HEIGHT
             self.screen = pg.display.set_mode((WIDTH, HEIGHT))
-            pg.display.set_caption("2-Euclid's Game")
+            pg.display.set_caption("Euclid's Game")
         
         self.font_small = pg.font.Font(None, 24)
         self.font = pg.font.Font(None, 36)
@@ -144,42 +144,29 @@ class Game(Gtk.DrawingArea):
             self.squares[i + 1] = pg.Rect(x, y, square_size, square_size)
 
     def create_enhanced_bot_avatar(self):
-        surface = pg.Surface((120, 120), pg.SRCALPHA)
+        image_path = "assets/robot.png" 
         
-        center = (60, 60)
-        for i in range(50, 0, -1):
-            alpha = int(255 * (1 - i / 50) * 0.3)
-            color = (59, 130, 246, alpha)
-            temp_surface = pg.Surface((i * 2, i * 2), pg.SRCALPHA)
-            pg.draw.circle(temp_surface, color, (i, i), i)
-            surface.blit(temp_surface, (center[0] - i, center[1] - i))
-        
-        body_rect = pg.Rect(30, 25, 60, 50)
-        self.draw_rounded_rect_gradient(surface, body_rect, 
-                                       [(100, 116, 139), (71, 85, 105)], 12)
-        
-        eye_color = (59, 130, 246)
-        glow_color = (96, 165, 250, 100)
-        
-        pg.draw.circle(surface, glow_color, (45, 45), 12)
-        pg.draw.circle(surface, eye_color, (45, 45), 8)
-        pg.draw.circle(surface, (255, 255, 255), (47, 43), 3)
-        
-        pg.draw.circle(surface, glow_color, (75, 45), 12)
-        pg.draw.circle(surface, eye_color, (75, 45), 8)
-        pg.draw.circle(surface, (255, 255, 255), (77, 43), 3)
-        
-        pg.draw.line(surface, (100, 116, 139), (60, 25), (60, 10), 3)
-        pg.draw.circle(surface, (239, 68, 68), (60, 10), 6)
-        pg.draw.circle(surface, (255, 255, 255, 150), (60, 10), 4)
-        
-        pg.draw.rect(surface, (100, 116, 139), (15, 50, 20, 8), border_radius=4)
-        pg.draw.rect(surface, (100, 116, 139), (85, 50, 20, 8), border_radius=4)
-        
-        pg.draw.rect(surface, (45, 55, 72), (35, 35, 50, 30), border_radius=8)
-        pg.draw.rect(surface, eye_color, (40, 40, 40, 20), border_radius=6)
-        
-        return surface
+        try:
+            avatar_image = pg.image.load(image_path)
+            
+            original_rect = avatar_image.get_rect()
+            
+            scale_factor = min(120 / original_rect.width, 120 / original_rect.height)
+            new_width = int(original_rect.width * scale_factor)
+            new_height = int(original_rect.height * scale_factor)
+            
+            avatar_image = pg.transform.smoothscale(avatar_image, (new_width, new_height))
+            
+            surface = pg.Surface((120, 120), pg.SRCALPHA)
+            x = (120 - new_width) // 2
+            y = (120 - new_height) // 2
+            surface.blit(avatar_image, (x, y))
+            
+            return surface
+            
+        except Exception as e:
+            print(f"Error loading bot avatar: {e}")
+            return self.create_fallback_bot_avatar()
 
     def draw_rounded_rect_gradient(self, surface, rect, colors, radius):
         """Draw a rounded rectangle with gradient effect"""
@@ -470,7 +457,7 @@ class Game(Gtk.DrawingArea):
         screen.blit(title_text, title_rect)
         
         help_lines = [
-            _("3-Euclid's Game Rules:"),
+            _("Euclid's Game Rules:"),
             "",
             _("1. Players take turns selecting two numbers from the board"),
             _("2. Calculate the absolute difference between the two numbers"),
@@ -906,14 +893,14 @@ class Game(Gtk.DrawingArea):
         
         screen.blit(header_surface, header_rect)
         
-        title_glow = self.font_large.render("5-Euclid's Game", True, colors['PRIMARY'])
+        title_glow = self.font_large.render("Euclid's Game", True, colors['PRIMARY'])
         for i in range(3):
             glow_surface = pg.Surface(title_glow.get_size(), pg.SRCALPHA)
             glow_surface.blit(title_glow, (0, 0))
             glow_surface.set_alpha(50 - i * 15)
             screen.blit(glow_surface, (20 - i, 25 - i))
         
-        title_surface = self.font_large.render("6-Euclid's Game", True, colors['TEXT'])
+        title_surface = self.font_large.render("Euclid's Game", True, colors['TEXT'])
         screen.blit(title_surface, (20, 25))
         
         self.draw_turn_indicator(screen, header_rect, current_time)
@@ -929,7 +916,7 @@ class Game(Gtk.DrawingArea):
             if self.current_player == 1:
                 player_text = "Your Turn"
                 player_color = colors['SUCCESS']
-                icon = "👤"
+                icon = ""
             else:
                 player_text = "Bot Thinking..."
                 player_color = colors['WARNING']
