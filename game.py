@@ -368,8 +368,7 @@ class Game(Gtk.DrawingArea):
     def handle_game_over_click(self, mouse_pos):
         # Check for restart button click
         button_rect = pg.Rect(self.screen_width // 2 - 100, self.screen_height // 2 + 50, 200, 60)
-        if button_rect.collidepoint(mouse_pos):
-            self.reset_game()
+        self.show_menu = True
 
     def update(self, dt):
         current_time = time.time()
@@ -514,7 +513,6 @@ class Game(Gtk.DrawingArea):
             if self.game_over:
                 self.draw_enhanced_game_over(self.screen)
 
-        self.draw_enhanced_game_over(self.screen)
         # Draw particles
         for particle in self.particles:
             particle.draw(self.screen)
@@ -624,7 +622,7 @@ class Game(Gtk.DrawingArea):
         
         # Menu panel - consistent positioning
         menu_width = 600
-        menu_height = 450
+        menu_height = 500
         menu_x = (self.screen_width - menu_width) // 2
         menu_y = (self.screen_height - menu_height) // 2 + 30
         
@@ -689,8 +687,7 @@ class Game(Gtk.DrawingArea):
                                         self.difficulty == diff, color)
         
         # Start button
-        start_y = menu_y + menu_height - 80
-        start_rect = pg.Rect(menu_x + menu_width // 2 - 100, start_y, 200, 50)
+        start_rect = pg.Rect(menu_x + menu_width // 2 -130, menu_y + menu_height - 70, 250, 50)
         self.draw_menu_button(screen, start_rect, "START GAME", True, colors['ACCENT'])
         
     def draw_menu_button(self, screen, rect, text, selected, color):
@@ -1553,22 +1550,6 @@ class Game(Gtk.DrawingArea):
             screen.blit(text_surface, (panel_x + 20, y_offset))
             y_offset += 25
 
-    def draw_control_hints(self, screen):
-        colors = self.theme
-        
-        hints = [
-            "ESC: Menu",
-            "T: Theme",
-            "H: Help",
-            "U: Undo"
-        ]
-        
-        y_offset = self.screen_height - 80
-        for hint in hints:
-            text_surface = self.font_small.render(hint, True, colors['TEXT_MUTED'])
-            screen.blit(text_surface, (20, y_offset))
-            y_offset += 20
-
     def draw_enhanced_game_over(self, screen):
         """Enhanced game over screen with animations and stats"""
         colors = self.theme
@@ -1614,9 +1595,6 @@ class Game(Gtk.DrawingArea):
         
         # Winner announcement with animation
         self.draw_winner_text(screen, panel_rect, current_time)
-        
-        # Game statistics
-        self.draw_game_stats(screen, panel_rect)
         
         # Action buttons
         self.draw_game_over_buttons(screen, panel_rect, current_time)
@@ -1834,8 +1812,11 @@ class Game(Gtk.DrawingArea):
     def add_initial_numbers_animated(self):
         """Add initial numbers with animation"""
         # Select two random starting numbers
-        num1 = random.randint(20, 40)
-        num2 = random.randint(60, 80)
+        # num1 = random.randint(20, 40)
+        # num2 = random.randint(60, 80)
+
+        num1 = 3
+        num2 = 4
         
         self.active_numbers = [num1, num2]
         
@@ -1967,41 +1948,36 @@ class Game(Gtk.DrawingArea):
         button_y = panel_rect.y + 320
         button_width = 180
         button_height = 50
-        spacing = 40
         
-        buttons = [
-            ("Play Again", colors['SUCCESS'], self.reset_game),
-            ("Main Menu", colors['PRIMARY'], self.show_main_menu)
-        ]
+        # Single button centered in panel
+        button_x = panel_rect.centerx - button_width // 2
+        button_rect = pg.Rect(button_x, button_y, button_width, button_height)
         
-        start_x = panel_rect.centerx - (button_width + spacing // 2)
+        # Store button rect for click detection
+        self.play_again_button_rect = button_rect.copy()
         
-        for i, (text, color, action) in enumerate(buttons):
-            button_x = start_x + i * (button_width + spacing)
-            button_rect = pg.Rect(button_x, button_y, button_width, button_height)
+        # Hover effect
+        mouse_pos = pg.mouse.get_pos()
+        is_hover = button_rect.collidepoint(mouse_pos)
+        
+        if is_hover:
+            # Elevated shadow
+            shadow_rect = button_rect.copy()
+            shadow_rect.y += 5
+            pg.draw.rect(screen, colors['CARD_SHADOW'], shadow_rect, border_radius=25)
             
-            # Hover effect
-            mouse_pos = pg.mouse.get_pos()
-            is_hover = button_rect.collidepoint(mouse_pos)
-            
-            if is_hover:
-                # Elevated shadow
-                shadow_rect = button_rect.copy()
-                shadow_rect.y += 5
-                pg.draw.rect(screen, colors['CARD_SHADOW'], shadow_rect, border_radius=25)
-                
-                # Pulse effect
-                scale = 1.05 + 0.05 * math.sin(current_time * 4)
-                button_rect = button_rect.inflate(int(button_width * (scale - 1)), 
-                                                int(button_height * (scale - 1)))
-            
-            # Button background
-            pg.draw.rect(screen, color, button_rect, border_radius=25)
-            
-            # Button text
-            text_surface = self.font.render(text, True, (255, 255, 255))
-            text_rect = text_surface.get_rect(center=button_rect.center)
-            screen.blit(text_surface, text_rect)
+            # Pulse effect
+            scale = 1.05 + 0.05 * math.sin(current_time * 4)
+            button_rect = button_rect.inflate(int(button_width * (scale - 1)), 
+                                            int(button_height * (scale - 1)))
+        
+        # Button background
+        pg.draw.rect(screen, colors['SUCCESS'], button_rect, border_radius=25)
+        
+        # Button text
+        text_surface = self.font.render("Play Again", True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=button_rect.center)
+        screen.blit(text_surface, text_rect)
 
     def count_valid_moves(self):
         """Count remaining valid moves"""
