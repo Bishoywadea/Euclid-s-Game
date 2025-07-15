@@ -37,11 +37,6 @@ class Euclids(activity.Activity):
         activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, -1)
 
-        theme_button = ToolButton("view-refresh")  # Use a valid Sugar icon
-        theme_button.set_tooltip("Toggle Theme")
-        theme_button.connect("clicked", self._toggle_theme)
-        toolbar_box.toolbar.insert(theme_button, -1)
-        
         theme_button = ToolButton("camera")
         theme_button.set_tooltip("Toggle Theme")
         theme_button.connect("clicked", self._toggle_theme)

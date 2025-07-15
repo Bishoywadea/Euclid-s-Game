@@ -806,9 +806,9 @@ class Game(Gtk.DrawingArea):
         screen.blit(title_text, title_rect)
         
         difficulties = [
-            (Difficulty.EASY, "Easy", colors['SUCCESS'], "⚡", "Quick random moves"),
-            (Difficulty.MEDIUM, "Medium", colors['WARNING'], "🧠", "Strategic thinking"),
-            (Difficulty.EXPERT, "Expert", colors['ERROR'], "🏆", "Optimal play")
+            (Difficulty.EASY, "Easy", colors['SUCCESS'], "", "Quick random moves"),
+            (Difficulty.MEDIUM, "Medium", colors['WARNING'], "", "Strategic thinking"),
+            (Difficulty.EXPERT, "Expert", colors['ERROR'], "", "Optimal play")
         ]
         
         button_width = 400
