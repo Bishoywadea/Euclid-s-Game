@@ -332,8 +332,7 @@ class Game(Gtk.DrawingArea):
                     return
         
         # Start button
-        start_y = menu_y + menu_height - 80  # Must match draw_enhanced_menu
-        start_rect = pg.Rect(menu_x + menu_width // 2 - 100, start_y, 200, 50)
+        start_rect = pg.Rect(menu_x + menu_width // 2 -130, menu_y + menu_height - 70, 250, 50)
         if start_rect.collidepoint(mouse_pos):
             self.show_menu = False
             self.reset_game()
