@@ -1,3 +1,6 @@
+import time
+import math
+
 class Animation:
     def __init__(self, start_pos, end_pos, duration=0.5, easing='ease_out_cubic'):
         self.start_pos = start_pos

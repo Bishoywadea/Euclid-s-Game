@@ -7,130 +7,23 @@ import time
 import math
 from abc import ABC, abstractmethod
 from gettext import gettext as _
+from player import Player
+from player import Bot
+from player import Difficulty
+from animation import Animation
+from particle import Particle   
 from config import Theme
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
+# Configuration constants
 WIDTH, HEIGHT = 1200, 800
 FPS = 60
 
-# Difficulty levels
-class Difficulty(Enum):
-    EASY = 1
-    MEDIUM = 2
-    EXPERT = 3
-
-# Game modes
 class GameMode(Enum):
     VS_BOT = 1
     LOCAL_MULTIPLAYER = 2
-
-# Player base class
-class Player(ABC):
-    def __init__(self, name, player_id):
-        self.name = name
-        self.player_id = player_id
-    
-    @abstractmethod
-    def get_move(self, game_state):
-        pass
-
-# Human player
-class HumanPlayer(Player):
-    def __init__(self, name="Player"):
-        super().__init__(name, 1)
-    
-    def get_move(self, game_state):
-        return None
-
-# Bot players
-class Bot(Player):
-    def __init__(self, difficulty=Difficulty.MEDIUM):
-        self.difficulty = difficulty
-        name = f"Bot ({difficulty.name})"
-        super().__init__(name, 2)
-    
-    def get_move(self, game_state):
-        if self.difficulty == Difficulty.EASY:
-            return self._easy_move(game_state)
-        elif self.difficulty == Difficulty.MEDIUM:
-            return self._medium_move(game_state)
-        else:
-            return self._expert_move(game_state)
-    
-    def _easy_move(self, game_state):
-        valid_moves = self._get_valid_moves(game_state)
-        if valid_moves:
-            return random.choice(valid_moves)
-        return None
-    
-    def _medium_move(self, game_state):
-        valid_moves = self._get_valid_moves(game_state)
-        if not valid_moves:
-            return None
-        
-        for move in valid_moves:
-            temp_numbers = game_state['active_numbers'].copy()
-            diff = abs(move[0] - move[1])
-            temp_numbers.append(diff)
-            
-            opponent_moves = self._get_valid_moves({'active_numbers': temp_numbers})
-            if not opponent_moves:
-                return move
-        
-        moves_with_diff = [(move, abs(move[0] - move[1])) for move in valid_moves]
-        moves_with_diff.sort(key=lambda x: x[1])
-        return moves_with_diff[0][0]
-    
-    def _expert_move(self, game_state):
-        valid_moves = self._get_valid_moves(game_state)
-        if not valid_moves:
-            return None
-        
-        best_move = None
-        best_value = float('-inf')
-        
-        for move in valid_moves:
-            value = self._minimax(game_state, move, depth=4, maximizing=False)
-            if value > best_value:
-                best_value = value
-                best_move = move
-        
-        return best_move
-    
-    def _minimax(self, game_state, move, depth, maximizing):
-        temp_numbers = game_state['active_numbers'].copy()
-        diff = abs(move[0] - move[1])
-        temp_numbers.append(diff)
-        new_state = {'active_numbers': temp_numbers}
-        
-        moves = self._get_valid_moves(new_state)
-        if not moves or depth == 0:
-            return len(moves) if maximizing else -len(moves)
-        
-        if maximizing:
-            max_eval = float('-inf')
-            for next_move in moves:
-                eval_score = self._minimax(new_state, next_move, depth - 1, False)
-                max_eval = max(max_eval, eval_score)
-            return max_eval
-        else:
-            min_eval = float('inf')
-            for next_move in moves:
-                eval_score = self._minimax(new_state, next_move, depth - 1, True)
-                min_eval = min(min_eval, eval_score)
-            return min_eval
-    
-    def _get_valid_moves(self, game_state):
-        valid_moves = []
-        numbers = game_state['active_numbers']
-        for i in range(len(numbers)):
-            for j in range(i + 1, len(numbers)):
-                diff = abs(numbers[i] - numbers[j])
-                if diff not in numbers:
-                    valid_moves.append((numbers[i], numbers[j]))
-        return valid_moves
 
 class Game(Gtk.DrawingArea):
     def __init__(self):
@@ -142,6 +35,8 @@ class Game(Gtk.DrawingArea):
         self.show_help = False
         self.clock = None
         self.theme = Theme.LIGHT
+        self.animations = []
+        self.particles = []
         self.move_history = []
         self.show_menu = True
         self.bot = Bot(self.difficulty)
@@ -152,6 +47,7 @@ class Game(Gtk.DrawingArea):
         self.screen_width = WIDTH
         self.screen_height = HEIGHT
         self.hover_effects = {}
+        self.button_animations = {}
         self.transition_alpha = 0
         self.transition_target = 0
         self.last_frame_time = time.time()
@@ -166,6 +62,7 @@ class Game(Gtk.DrawingArea):
         
         # Bot avatar
         self.bot_avatar = None
+        self.bot_thinking_animation = 0
 
     def toggle_theme(self):
         """Toggle between light and dark themes"""
@@ -174,6 +71,12 @@ class Game(Gtk.DrawingArea):
         else:
             self.theme = Theme.LIGHT
         
+        # Create visual feedback
+        for _ in range(20):
+            x = random.randint(100, self.screen_width - 100)
+            y = random.randint(100, self.screen_height - 100)
+            self.create_particles(x, y, 1, self.theme['PRIMARY'])
+
     def set_canvas(self, canvas):
         self.canvas = canvas
         if self.screen:
@@ -336,6 +239,16 @@ class Game(Gtk.DrawingArea):
             pg.draw.line(temp_surface, color, (0, i), (rect.width, i))
         surface.blit(temp_surface, rect.topleft)
 
+    def create_particles(self, x, y, count=10, color=(59, 130, 246)):
+        """Create particle effects for visual feedback"""
+        for _ in range(count):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(50, 150)
+            velocity = (math.cos(angle) * speed, math.sin(angle) * speed)
+            self.particles.append(
+                Particle(x, y, color, velocity, random.uniform(2, 5), random.uniform(0.5, 1.5))
+            )
+
     def handle_events(self):
         for event in pg.event.get():
             if event.type == pg.QUIT:
@@ -344,6 +257,8 @@ class Game(Gtk.DrawingArea):
                 self.handle_click(event.pos)
             elif event.type == pg.MOUSEMOTION:
                 self.handle_hover(event.pos)
+            # elif event.type == pg.VIDEORESIZE:
+            #     self.handle_resize()
                 
     def handle_hover(self, mouse_pos):
         """Handle hover effects for interactive elements"""
@@ -417,7 +332,7 @@ class Game(Gtk.DrawingArea):
                     return
         
         # Start button
-        start_y = menu_y + menu_height
+        start_y = menu_y + menu_height - 80  # Must match draw_enhanced_menu
         start_rect = pg.Rect(menu_x + menu_width // 2 - 100, start_y, 200, 50)
         if start_rect.collidepoint(mouse_pos):
             self.show_menu = False
@@ -442,6 +357,9 @@ class Game(Gtk.DrawingArea):
             for num, rect in self.squares.items():
                 if rect.collidepoint(mouse_pos):
                     if self.select_number(num):
+                        # Create particle effect on selection
+                        self.create_particles(rect.centerx, rect.centery, 8)
+                        
                         # If two numbers are selected, try to make a move
                         if len(self.selected_numbers) == 2:
                             if self.make_move():
@@ -455,6 +373,20 @@ class Game(Gtk.DrawingArea):
 
     def update(self, dt):
         current_time = time.time()
+        
+        # Update animations with smooth interpolation
+        for anim in self.animations[:]:
+            if not anim.active:
+                self.animations.remove(anim)
+        
+        # Update particles with physics
+        for particle in self.particles[:]:
+            if not particle.update(dt):
+                self.particles.remove(particle)
+        
+        # Update bot thinking animation
+        if self.bot_thinking:
+            self.bot_thinking_animation += dt * 4
         
         # Update transition effects
         if self.transition_target != self.transition_alpha:
@@ -474,12 +406,98 @@ class Game(Gtk.DrawingArea):
             if not self.bot_thinking:
                 self.bot_thinking = True
                 self.bot_start_time = current_time
+                # Start thinking animation
+                self.create_bot_thinking_particles()
             elif current_time - self.bot_start_time >= self.bot_move_delay:
                 if self.bot_move():
                     if len(self.selected_numbers) == 2:
+                        # Create move visualization
+                        self.create_bot_move_animation()
+                        
                         if self.make_move():
                             self.check_game_over()
                 self.bot_thinking = False
+
+    def create_bot_thinking_particles(self):
+        """Create particles to show bot is thinking"""
+        if self.game_mode == GameMode.VS_BOT and self.current_player == 2:
+            # Create circular particle pattern around bot avatar
+            bot_x = self.screen_width - 250
+            bot_y = 50
+            
+            for i in range(8):
+                angle = (i / 8) * 2 * math.pi
+                x = bot_x + 40 * math.cos(angle)
+                y = bot_y + 40 * math.sin(angle)
+                velocity = (
+                    -20 * math.cos(angle),
+                    -20 * math.sin(angle)
+                )
+                self.particles.append(
+                    Particle(x, y, self.theme['WARNING'], velocity, 2, 1.5)
+                )
+
+    def create_bot_move_animation(self):
+        """Create enhanced animation for bot moves"""
+        if len(self.selected_numbers) == 2:
+            num1, num2 = self.selected_numbers
+            start_pos = self.squares[num1].center
+            end_pos = self.squares[num2].center
+            diff = abs(num1 - num2)
+            
+            # Create connecting beam effect
+            self.create_beam_effect(start_pos, end_pos)
+            
+            # Animate the difference
+            mid_pos = ((start_pos[0] + end_pos[0]) // 2,
+                    (start_pos[1] + end_pos[1]) // 2)
+            
+            if diff in self.squares:
+                # Enhanced animation with multiple stages
+                anim = Animation(mid_pos, self.squares[diff].center, 
+                            duration=1.0, easing='ease_bounce')
+                anim.number = diff
+                self.animations.append(anim)
+                
+                # Celebration particles at destination
+                dest = self.squares[diff].center
+                for i in range(20):
+                    angle = random.uniform(0, 2 * math.pi)
+                    speed = random.uniform(50, 150)
+                    velocity = (math.cos(angle) * speed, math.sin(angle) * speed)
+                    self.particles.append(
+                        Particle(dest[0], dest[1], self.theme['GOLD'], 
+                            velocity, random.uniform(2, 5), random.uniform(1, 2))
+                    )
+
+    def create_beam_effect(self, start_pos, end_pos):
+        """Create a beam effect between two positions"""
+        # Calculate beam path
+        distance = math.sqrt((end_pos[0] - start_pos[0])**2 + (end_pos[1] - start_pos[1])**2)
+        steps = int(distance / 20)
+        
+        # Create particles along the beam
+        for i in range(steps):
+            t = i / steps
+            x = start_pos[0] + (end_pos[0] - start_pos[0]) * t
+            y = start_pos[1] + (end_pos[1] - start_pos[1]) * t
+            
+            # Add some randomness
+            x += random.uniform(-5, 5)
+            y += random.uniform(-5, 5)
+            
+            self.particles.append(
+                Particle(x, y, self.theme['PRIMARY_BRIGHT'], 
+                    (0, 0), 4, 0.5)
+            )
+
+    # Add method to handle window resize
+    # def handle_resize(self):
+    #     """Handle window resize events"""
+    #     if self.screen:
+    #         self.screen_width = self.screen.get_width()
+    #         self.screen_height = self.screen.get_height()
+    #         self.setup_squares()
 
     def draw(self):
         colors = self.theme
@@ -495,7 +513,12 @@ class Game(Gtk.DrawingArea):
             self.draw_enhanced_game_ui(self.screen)
             if self.game_over:
                 self.draw_enhanced_game_over(self.screen)
-        
+
+        self.draw_enhanced_game_over(self.screen)
+        # Draw particles
+        for particle in self.particles:
+            particle.draw(self.screen)
+
         pg.display.flip()
 
     def draw_enhanced_help(self, screen):
@@ -666,17 +689,10 @@ class Game(Gtk.DrawingArea):
                                         self.difficulty == diff, color)
         
         # Start button
-        start_y = menu_y + menu_height
+        start_y = menu_y + menu_height - 80
         start_rect = pg.Rect(menu_x + menu_width // 2 - 100, start_y, 200, 50)
         self.draw_menu_button(screen, start_rect, "START GAME", True, colors['ACCENT'])
         
-        # Corner buttons
-        theme_rect = pg.Rect(menu_x + menu_width - 50, menu_y + 15, 35, 35)
-        self.draw_corner_button(screen, theme_rect, "T", "Theme")
-        
-        help_rect = pg.Rect(menu_x + 15, menu_y + 15, 35, 35)
-        self.draw_corner_button(screen, help_rect, "?", "Help")
-
     def draw_menu_button(self, screen, rect, text, selected, color):
         """Simplified button drawing"""
         colors = self.theme
@@ -697,20 +713,6 @@ class Game(Gtk.DrawingArea):
         # Center text properly
         font = self.font_large if text == "START GAME" else self.font
         text_surface = font.render(text, True, text_color)
-        text_rect = text_surface.get_rect(center=rect.center)
-        screen.blit(text_surface, text_rect)
-
-    def draw_corner_button(self, screen, rect, text, tooltip):
-        """Draw corner buttons"""
-        colors = self.theme
-        mouse_pos = pg.mouse.get_pos()
-        is_hover = rect.collidepoint(mouse_pos)
-        
-        bg_color = colors['GRAY_DARK'] if is_hover else colors['GRAY']
-        pg.draw.rect(screen, bg_color, rect, border_radius=8)
-        pg.draw.rect(screen, colors['TEXT_LIGHT'], rect, 2, border_radius=8)
-        
-        text_surface = self.font.render(text, True, colors['TEXT'])
         text_rect = text_surface.get_rect(center=rect.center)
         screen.blit(text_surface, text_rect)
 
@@ -880,6 +882,146 @@ class Game(Gtk.DrawingArea):
         
         screen.blit(panel_surface, rect.topleft)
 
+    def draw_mode_selection(self, screen, x, y, width, current_time):
+        """Draw game mode selection with icons"""
+        colors = self.theme
+        
+        # Title
+        title_text = self.font_large.render("Select Game Mode", True, colors['TEXT'])
+        title_rect = title_text.get_rect(center=(x + width // 2, y))
+        screen.blit(title_text, title_rect)
+        
+        # Mode buttons with icons
+        button_width = 220
+        button_height = 80
+        button_y = y + 60
+        spacing = 40
+        
+        modes = [
+            (GameMode.VS_BOT, "VS Bot", "🤖", colors['PRIMARY']),
+            (GameMode.LOCAL_MULTIPLAYER, "Local 2P", "👥", colors['SECONDARY'])
+        ]
+        
+        start_x = x + width // 2 - (button_width + spacing // 2)
+        
+        for i, (mode, label, icon, color) in enumerate(modes):
+            button_x = start_x + i * (button_width + spacing)
+            button_rect = pg.Rect(button_x, button_y, button_width, button_height)
+            
+            is_selected = self.game_mode == mode
+            
+            # Button with elevation
+            if is_selected:
+                elevation = 5
+                shadow_rect = pg.Rect(button_x, button_y + elevation, button_width, button_height)
+                pg.draw.rect(screen, colors['CARD_SHADOW'], shadow_rect, border_radius=15)
+            
+            # Main button
+            button_surface = pg.Surface((button_width, button_height), pg.SRCALPHA)
+            
+            if is_selected:
+                # Gradient fill for selected
+                for j in range(button_height):
+                    ratio = j / button_height
+                    grad_color = [
+                        int(color[0] * (1 - ratio * 0.3)),
+                        int(color[1] * (1 - ratio * 0.3)),
+                        int(color[2] * (1 - ratio * 0.3))
+                    ]
+                    pg.draw.line(button_surface, grad_color, (0, j), (button_width, j))
+                text_color = (255, 255, 255)
+            else:
+                button_surface.fill(colors['GLASS'])
+                pg.draw.rect(button_surface, color, (0, 0, button_width, button_height), 2, border_radius=15)
+                text_color = colors['TEXT']
+            
+            # Icon
+            icon_font = pg.font.Font(None, 40)
+            icon_surface = icon_font.render(icon, True, text_color)
+            icon_rect = icon_surface.get_rect(center=(button_width // 2, button_height // 2 - 15))
+            button_surface.blit(icon_surface, icon_rect)
+            
+            # Label
+            label_surface = self.font.render(label, True, text_color)
+            label_rect = label_surface.get_rect(center=(button_width // 2, button_height // 2 + 20))
+            button_surface.blit(label_surface, label_rect)
+            
+            # Apply rounded corners
+            mask = pg.Surface((button_width, button_height), pg.SRCALPHA)
+            pg.draw.rect(mask, (255, 255, 255, 255), (0, 0, button_width, button_height), border_radius=15)
+            button_surface.blit(mask, (0, 0), special_flags=pg.BLEND_RGBA_MIN)
+            
+            screen.blit(button_surface, button_rect)
+
+    def draw_difficulty_selection(self, screen, x, y, width, current_time):
+        """Draw difficulty selection with visual indicators"""
+        colors = self.theme
+        
+        # Title
+        title_text = self.font_large.render("Select Difficulty", True, colors['TEXT'])
+        title_rect = title_text.get_rect(center=(x + width // 2, y))
+        screen.blit(title_text, title_rect)
+        
+        # Difficulty options with visual indicators
+        difficulties = [
+            (Difficulty.EASY, "Easy", colors['SUCCESS'], "⚡", "Quick random moves"),
+            (Difficulty.MEDIUM, "Medium", colors['WARNING'], "🧠", "Strategic thinking"),
+            (Difficulty.EXPERT, "Expert", colors['ERROR'], "🏆", "Optimal play")
+        ]
+        
+        button_width = 400
+        button_height = 50
+        button_y = y + 50
+        
+        for i, (diff, name, color, icon, desc) in enumerate(difficulties):
+            button_rect = pg.Rect(x + width // 2 - button_width // 2,
+                                button_y + i * (button_height + 15),
+                                button_width, button_height)
+            
+            is_selected = self.difficulty == diff
+            
+            # Draw button
+            if is_selected:
+                # Selected state with glow
+                glow_rect = button_rect.inflate(10, 10)
+                glow_surface = pg.Surface((glow_rect.width, glow_rect.height), pg.SRCALPHA)
+                pg.draw.rect(glow_surface, (*color[:3], 50), (0, 0, glow_rect.width, glow_rect.height), border_radius=12)
+                screen.blit(glow_surface, glow_rect)
+                
+                pg.draw.rect(screen, color, button_rect, border_radius=10)
+                text_color = (255, 255, 255)
+            else:
+                pg.draw.rect(screen, colors['GLASS'], button_rect, border_radius=10)
+                pg.draw.rect(screen, color, button_rect, 2, border_radius=10)
+                text_color = colors['TEXT']
+            
+            # Icon and text
+            icon_surface = self.font_large.render(icon, True, text_color)
+            screen.blit(icon_surface, (button_rect.x + 20, button_rect.centery - 15))
+            
+            name_surface = self.font.render(name, True, text_color)
+            screen.blit(name_surface, (button_rect.x + 70, button_rect.centery - 20))
+            
+            desc_surface = self.font_small.render(desc, True, colors['TEXT_MUTED'])
+            screen.blit(desc_surface, (button_rect.x + 70, button_rect.centery + 5))
+
+    def draw_floating_buttons(self, screen, menu_x, menu_y, menu_width, menu_height):
+        """Draw floating action buttons"""
+        colors = self.theme
+        
+        # Theme toggle button
+        theme_rect = pg.Rect(menu_x + menu_width - 60, menu_y + 20, 40, 40)
+        theme_icon = "🌙" if self.theme == Theme.LIGHT else "☀️"
+        self.draw_floating_button(screen, theme_rect, theme_icon, colors['ACCENT'])
+        
+        # Help button
+        help_rect = pg.Rect(menu_x + 20, menu_y + 20, 40, 40)
+        self.draw_floating_button(screen, help_rect, "?", colors['PRIMARY'])
+        
+        # Sound button (for future implementation)
+        sound_rect = pg.Rect(menu_x + 70, menu_y + 20, 40, 40)
+        self.draw_floating_button(screen, sound_rect, "🔊", colors['SECONDARY'])
+
     def draw_floating_button(self, screen, rect, icon, color):
         """Draw a floating action button with elevation"""
         mouse_pos = pg.mouse.get_pos()
@@ -918,6 +1060,95 @@ class Game(Gtk.DrawingArea):
         icon_rect = icon_surface.get_rect(center=rect.center)
         screen.blit(icon_surface, icon_rect)
 
+    def draw_animated_button(self, screen, rect, text, gradient_colors, current_time):
+        """Draw button with animated gradient and hover effect"""
+        mouse_pos = pg.mouse.get_pos()
+        is_hover = rect.collidepoint(mouse_pos)
+        
+        # Pulsing effect
+        pulse = 1.0 + 0.05 * math.sin(current_time * 3) if is_hover else 1.0
+        scaled_rect = rect.inflate(int(rect.width * (pulse - 1)), int(rect.height * (pulse - 1)))
+        
+        # Shadow
+        shadow_surface = pg.Surface((scaled_rect.width + 10, scaled_rect.height + 10), pg.SRCALPHA)
+        pg.draw.rect(shadow_surface, (*self.theme['CARD_SHADOW'][:3], 100), 
+                    (0, 0, scaled_rect.width + 10, scaled_rect.height + 10), 
+                    border_radius=30)
+        screen.blit(shadow_surface, (scaled_rect.x - 5, scaled_rect.y - 5))
+        
+        # Animated gradient background
+        button_surface = pg.Surface((scaled_rect.width, scaled_rect.height), pg.SRCALPHA)
+        
+        offset = int(current_time * 50) % scaled_rect.height
+        for i in range(scaled_rect.height):
+            ratio = ((i + offset) % scaled_rect.height) / scaled_rect.height
+            color = [
+                int(gradient_colors[0][j] * (1 - ratio) + gradient_colors[1][j] * ratio)
+                for j in range(3)
+            ]
+            pg.draw.line(button_surface, color, (0, i), (scaled_rect.width, i))
+        
+        # Apply rounded corners
+        mask = pg.Surface((scaled_rect.width, scaled_rect.height), pg.SRCALPHA)
+        pg.draw.rect(mask, (255, 255, 255, 255), 
+                    (0, 0, scaled_rect.width, scaled_rect.height), 
+                    border_radius=30)
+        button_surface.blit(mask, (0, 0), special_flags=pg.BLEND_RGBA_MIN)
+        
+        screen.blit(button_surface, scaled_rect)
+        
+        # Text with shadow
+        text_shadow = self.font_large.render(text, True, (0, 0, 0, 100))
+        text_surface = self.font_large.render(text, True, (255, 255, 255))
+        
+        shadow_rect = text_shadow.get_rect(center=(scaled_rect.centerx + 2, scaled_rect.centery + 2))
+        text_rect = text_surface.get_rect(center=scaled_rect.center)
+        
+        screen.blit(text_shadow, shadow_rect)
+        screen.blit(text_surface, text_rect)
+
+    def draw_modern_button(self, screen, rect, text, selected=False, color=(59, 130, 246), large=False):
+        """Draw a modern button with hover effects"""
+        colors = self.theme
+        font = self.font_large if large else self.font
+        
+        # Button background
+        if selected:
+            button_color = color
+            text_color = (255, 255, 255)
+        else:
+            button_color = colors['GLASS']
+            text_color = colors['TEXT']
+        
+        # Draw button with rounded corners
+        button_surface = pg.Surface((rect.width, rect.height), pg.SRCALPHA)
+        pg.draw.rect(button_surface, button_color, (0, 0, rect.width, rect.height), 
+                    border_radius=12)
+        
+        if not selected:
+            pg.draw.rect(button_surface, color, (0, 0, rect.width, rect.height), 
+                        2, border_radius=12)
+        
+        screen.blit(button_surface, rect.topleft)
+        
+        # Button text
+        text_surface = font.render(text, True, text_color)
+        text_rect = text_surface.get_rect(center=rect.center)
+        screen.blit(text_surface, text_rect)
+
+    def draw_icon_button(self, screen, rect, icon, color):
+        """Draw a circular icon button"""
+        colors = self.theme
+        
+        # Circle background
+        pg.draw.circle(screen, colors['GLASS'], rect.center, rect.width // 2)
+        pg.draw.circle(screen, color, rect.center, rect.width // 2, 2)
+        
+        # Icon
+        icon_surface = self.font_large.render(icon, True, color)
+        icon_rect = icon_surface.get_rect(center=rect.center)
+        screen.blit(icon_surface, icon_rect)
+
     def draw_enhanced_game_ui(self, screen):
         """Enhanced game UI with better visual hierarchy"""
         colors = self.theme
@@ -935,10 +1166,7 @@ class Game(Gtk.DrawingArea):
         self.draw_info_panel(screen)
         self.draw_move_history_panel(screen)
         
-        # Bottom control bar
-        self.draw_control_bar(screen)
-        
-        # Selected numbers display
+        # Selected numbers display with animation
         if self.selected_numbers:
             self.draw_selection_display(screen)
     
@@ -990,7 +1218,7 @@ class Game(Gtk.DrawingArea):
         title_surface = self.font_large.render("6-Euclid's Game", True, colors['TEXT'])
         screen.blit(title_surface, (20, 25))
         
-        # Player turn indicator
+        # Player turn indicator with animation
         self.draw_turn_indicator(screen, header_rect, current_time)
 
     def draw_turn_indicator(self, screen, header_rect, current_time):
@@ -1034,10 +1262,24 @@ class Game(Gtk.DrawingArea):
         pg.draw.rect(bg_surface, player_color, (0, 0, bg_width, bg_height), 2, border_radius=25)
         screen.blit(bg_surface, bg_rect)
         
-        
-        icon_surface = self.font_large.render(icon, True, (255, 255, 255))
-        icon_rect = icon_surface.get_rect(center=(indicator_x + 10, indicator_y + 15))
-        screen.blit(icon_surface, icon_rect)
+        # Icon with rotation for bot
+        if self.current_player == 2 and self.game_mode == GameMode.VS_BOT:
+            if self.bot_thinking:
+                # Animated bot avatar
+                scale = 0.8 + 0.2 * math.sin(self.bot_thinking_animation)
+                rotation = self.bot_thinking_animation * 30
+                
+                scaled_avatar = pg.transform.scale(self.bot_avatar, 
+                                                (int(50 * scale), int(50 * scale)))
+                rotated_avatar = pg.transform.rotate(scaled_avatar, rotation)
+                
+                avatar_rect = rotated_avatar.get_rect(center=(indicator_x + 10, indicator_y + 15))
+                screen.blit(rotated_avatar, avatar_rect)
+        else:
+            # Simple icon for players
+            icon_surface = self.font_large.render(icon, True, (255, 255, 255))
+            icon_rect = icon_surface.get_rect(center=(indicator_x + 10, indicator_y + 15))
+            screen.blit(icon_surface, icon_rect)
         
         # Text
         text_surface = self.font.render(player_text, True, (255, 255, 255))
@@ -1148,10 +1390,20 @@ class Game(Gtk.DrawingArea):
             if not is_active:
                 continue
                 
+            # Animation effects
             scale = 1.0
             alpha = 255
             rotation = 0
             elevation = 0
+            
+            # Find active animation for this number
+            for anim in self.animations:
+                if anim.number == num:
+                    scale = anim.scale
+                    alpha = anim.alpha
+                    rotation = anim.rotation
+                    break
+            
             # Enhanced hover effect with elevation
             if is_hovered and is_active:
                 hover_duration = current_time - self.hover_effects[num]
@@ -1301,8 +1553,24 @@ class Game(Gtk.DrawingArea):
             screen.blit(text_surface, (panel_x + 20, y_offset))
             y_offset += 25
 
+    def draw_control_hints(self, screen):
+        colors = self.theme
+        
+        hints = [
+            "ESC: Menu",
+            "T: Theme",
+            "H: Help",
+            "U: Undo"
+        ]
+        
+        y_offset = self.screen_height - 80
+        for hint in hints:
+            text_surface = self.font_small.render(hint, True, colors['TEXT_MUTED'])
+            screen.blit(text_surface, (20, y_offset))
+            y_offset += 20
+
     def draw_enhanced_game_over(self, screen):
-        """Enhanced game over screen"""
+        """Enhanced game over screen with animations and stats"""
         colors = self.theme
         current_time = time.time()
         
@@ -1311,6 +1579,21 @@ class Game(Gtk.DrawingArea):
         overlay_alpha = int(150 + 20 * math.sin(current_time))
         overlay.fill((0, 0, 0, overlay_alpha))
         screen.blit(overlay, (0, 0))
+        
+        # Victory/defeat particles
+        if hasattr(self, 'game_over_particles_created'):
+            pass
+        else:
+            self.game_over_particles_created = True
+            particle_color = colors['SUCCESS'] if self.winner == 1 else colors['ERROR']
+            for _ in range(100):
+                x = random.randint(100, self.screen_width - 100)
+                y = random.randint(100, self.screen_height - 100)
+                velocity = (random.uniform(-100, 100), random.uniform(-200, -50))
+                self.particles.append(
+                    Particle(x, y, particle_color, velocity, 
+                            random.uniform(3, 8), random.uniform(2, 4))
+                )
         
         # Main panel
         panel_width = 600
@@ -1337,51 +1620,6 @@ class Game(Gtk.DrawingArea):
         
         # Action buttons
         self.draw_game_over_buttons(screen, panel_rect, current_time)
-
-    def draw_control_bar(self, screen):
-        """Draw bottom control bar with action buttons"""
-        colors = self.theme
-        
-        bar_height = 60
-        bar_rect = pg.Rect(0, self.screen_height - bar_height, self.screen_width, bar_height)
-        
-        # Background
-        bar_surface = pg.Surface((bar_rect.width, bar_rect.height), pg.SRCALPHA)
-        pg.draw.rect(bar_surface, (*colors['CARD_BG'][:3], 180), 
-                    (0, 0, bar_rect.width, bar_rect.height))
-        screen.blit(bar_surface, bar_rect)
-        
-        # Control buttons
-        button_y = self.screen_height - 45
-        buttons = [
-            ("Menu (ESC)", pg.K_ESCAPE, 50),
-            ("Theme (T)", pg.K_t, 150),
-            ("Help (H)", pg.K_h, 250),
-            ("Undo (U)", pg.K_u, 350),
-        ]
-        
-        for text, key, x in buttons:
-            button_rect = pg.Rect(x, button_y, 80, 30)
-            
-            # Check if button is active
-            is_active = True
-            if text.startswith("Undo") and len(self.move_history) <= 0:
-                is_active = False
-            
-            # Draw button
-            if is_active:
-                pg.draw.rect(screen, colors['GLASS'], button_rect, border_radius=15)
-                pg.draw.rect(screen, colors['PRIMARY'], button_rect, 1, border_radius=15)
-                text_color = colors['TEXT']
-            else:
-                pg.draw.rect(screen, colors['GRAY'], button_rect, border_radius=15)
-                text_color = colors['TEXT_MUTED']
-            
-            # Button text
-            font_size = self.font_small
-            text_surface = font_size.render(text.split(' ')[0], True, text_color)
-            text_rect = text_surface.get_rect(center=button_rect.center)
-            screen.blit(text_surface, text_rect)
 
     def draw_glass_panel(self, screen, rect, title, accent_color):
         """Draw a reusable glass-style panel"""
@@ -1507,9 +1745,9 @@ class Game(Gtk.DrawingArea):
         for i in range(rect.height):
             ratio = i / rect.height
             bg_color = [
-                int(colors['CARD_BG'][j] * (1 - ratio * 0.2)),
-                int(colors['CARD_BG'][j] * (1 - ratio * 0.2)),
-                int(colors['CARD_BG'][j] * (1 - ratio * 0.2))
+                int(colors['CARD_BG'][0] * (1 - ratio * 0.2)),
+                int(colors['CARD_BG'][1] * (1 - ratio * 0.2)),
+                int(colors['CARD_BG'][2] * (1 - ratio * 0.2))
             ]
             pg.draw.line(panel_surface, bg_color, (0, i), (rect.width, i))
         
@@ -1563,6 +1801,15 @@ class Game(Gtk.DrawingArea):
 
     def reset_game(self):
         """Reset game with transition effects"""
+        # Create reset particles
+        for _ in range(50):
+            x = random.randint(100, self.screen_width - 100)
+            y = random.randint(100, self.screen_height - 100)
+            velocity = (random.uniform(-100, 100), random.uniform(-100, 100))
+            self.particles.append(
+                Particle(x, y, self.theme['PRIMARY'], velocity, 3, 1.5)
+            )
+        
         # Reset game state
         self.active_numbers = []
         self.selected_numbers = []
@@ -1570,11 +1817,12 @@ class Game(Gtk.DrawingArea):
         self.game_over = False
         self.winner = None
         self.move_history = []
+        self.animations = []
         self.hover_effects = {}
         self.bot_thinking = False
         self.game_start_time = time.time()
         
-        # Add initial numbers
+        # Add initial numbers with animation
         self.add_initial_numbers_animated()
         
         if self.game_mode == GameMode.VS_BOT:
@@ -1591,6 +1839,60 @@ class Game(Gtk.DrawingArea):
         
         self.active_numbers = [num1, num2]
         
+        # Create entrance animations for initial numbers
+        if num1 in self.squares and num2 in self.squares:
+            # Animate from outside the screen
+            start1 = (-100, self.screen_height // 2)
+            start2 = (self.screen_width + 100, self.screen_height // 2)
+            
+            anim1 = Animation(start1, self.squares[num1].center, 
+                            duration=1.0, easing='ease_out_cubic')
+            anim1.number = num1
+            
+            anim2 = Animation(start2, self.squares[num2].center, 
+                            duration=1.0, easing='ease_out_cubic')
+            anim2.number = num2
+            
+            self.animations.extend([anim1, anim2])
+
+    # Add keyboard shortcuts for better accessibility
+    def handle_keyboard_shortcuts(self, event):
+        """Handle keyboard shortcuts"""
+        if event.type == pg.KEYDOWN:
+            if event.key == pg.K_ESCAPE:
+                if self.show_help:
+                    self.show_help = False
+                elif self.game_over:
+                    self.show_main_menu()
+                else:
+                    self.show_menu = True
+            elif event.key == pg.K_t:
+                self.toggle_theme()
+                self.create_theme_transition_effect()
+            elif event.key == pg.K_h:
+                self.toggle_help()
+            elif event.key == pg.K_u and len(self.move_history) > 0:
+                self.undo_move()
+            elif event.key == pg.K_r and self.game_over:
+                self.reset_game()
+            elif event.key == pg.K_SPACE and len(self.selected_numbers) == 2:
+                # Quick move with spacebar
+                if self.make_move():
+                    self.check_game_over()
+
+    def create_theme_transition_effect(self):
+        """Create visual effect when changing themes"""
+        # Create a wave of particles
+        for x in range(0, self.screen_width, 40):
+            for y in range(0, self.screen_height, 40):
+                delay = (x + y) / (self.screen_width + self.screen_height)
+                velocity = (
+                    random.uniform(-50, 50),
+                    random.uniform(-50, 50)
+                )
+                particle = Particle(x, y, self.theme['ACCENT'], velocity, 5, 1.0 + delay)
+                self.particles.append(particle)
+
     def select_number(self, number):
         if number not in self.active_numbers:
             return False
@@ -1602,9 +1904,13 @@ class Game(Gtk.DrawingArea):
         
         if number in self.selected_numbers:
             self.selected_numbers.remove(number)
+            # Deselection particles
+            self.create_selection_particles(x, y, self.theme['GRAY'])
         else:
             if len(self.selected_numbers) < 2:
                 self.selected_numbers.append(number)
+                # Selection particles
+                self.create_selection_particles(x, y, self.theme['SECONDARY'])
         
         return True
 
@@ -1716,6 +2022,19 @@ class Game(Gtk.DrawingArea):
         if hasattr(self, 'game_over_time'):
             del self.game_over_time
 
+    # Enhanced particle effects for selections
+    def create_selection_particles(self, x, y, color):
+        """Create particles when selecting/deselecting numbers"""
+        for i in range(12):
+            angle = (i / 12) * 2 * math.pi
+            velocity = (
+                math.cos(angle) * 100,
+                math.sin(angle) * 100
+            )
+            self.particles.append(
+                Particle(x, y, color, velocity, 3, 0.8)
+            )
+
     def make_move(self):
         if len(self.selected_numbers) != 2:
             return False
@@ -1735,6 +2054,16 @@ class Game(Gtk.DrawingArea):
             'num2': num2,
             'diff': diff
         })
+        
+        # Create animation for new number
+        if diff in self.squares:
+            start_pos = ((self.squares[num1].centerx + self.squares[num2].centerx) // 2,
+                        (self.squares[num1].centery + self.squares[num2].centery) // 2)
+            end_pos = self.squares[diff].center
+            
+            anim = Animation(start_pos, end_pos, duration=0.8, easing='ease_bounce')
+            anim.number = diff
+            self.animations.append(anim)
         
         self.selected_numbers = []
         self.current_player = 2 if self.current_player == 1 else 1
@@ -1765,10 +2094,29 @@ class Game(Gtk.DrawingArea):
             # The current player loses (can't make a move)
             self.winner = 2 if self.current_player == 1 else 1
             
+            # Create celebration particles
+            for _ in range(50):
+                x = random.randint(100, self.screen_width - 100)
+                y = random.randint(100, self.screen_height - 100)
+                color = self.theme['SUCCESS'] if self.winner == 1 else self.theme['ERROR']
+                self.create_particles(x, y, 1, color)
+
     def set_difficulty(self, difficulty):
         self.difficulty = difficulty
         if hasattr(self, 'bot'):
             self.bot = Bot(difficulty)
+
+    def undo_move(self):
+        if self.move_history and not self.game_over:
+            last_move = self.move_history.pop()
+            self.active_numbers.remove(last_move['diff'])
+            self.current_player = last_move['player']
+            self.selected_numbers = []
+            
+            # Create undo particle effect
+            if last_move['diff'] in self.squares:
+                rect = self.squares[last_move['diff']]
+                self.create_particles(rect.centerx, rect.centery, 5, self.theme['WARNING'])
 
     def quit(self):
         self.running = False
