@@ -540,7 +540,7 @@ class Game(Gtk.DrawingArea):
         
         multi_rect = pg.Rect(menu_x + menu_width // 2 + 20, button_y, 
                             button_width, button_height)
-        self.draw_menu_button(screen, multi_rect, "Local 2P", 
+        self.draw_menu_button(screen, multi_rect, "VS Human", 
                             self.game_mode == GameMode.LOCAL_MULTIPLAYER, colors['SECONDARY'])
         
         if self.game_mode == GameMode.VS_BOT:
@@ -748,7 +748,7 @@ class Game(Gtk.DrawingArea):
         
         modes = [
             (GameMode.VS_BOT, "VS Bot", "🤖", colors['PRIMARY']),
-            (GameMode.LOCAL_MULTIPLAYER, "Local 2P", "👥", colors['SECONDARY'])
+            (GameMode.LOCAL_MULTIPLAYER, "VS Human", "👥", colors['SECONDARY'])
         ]
         
         start_x = x + width // 2 - (button_width + spacing // 2)
