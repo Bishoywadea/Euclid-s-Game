@@ -653,7 +653,7 @@ class Game(Gtk.DrawingArea):
         name_surface = self.font.render(name, True, text_color)
         screen.blit(name_surface, (rect.x + 40, rect.centery - 18))
         
-        desc_surface = self.font_small.render(desc, True, colors['TEXT_MUTED'] if not selected else (200, 200, 200))
+        desc_surface = self.font_small.render(desc, True, colors['TEXT_MUTED'] if not selected else (255, 255, 255))
         screen.blit(desc_surface, (rect.x + 40, rect.centery + 2))
 
     def draw_start_button(self, screen, rect, text, color):
