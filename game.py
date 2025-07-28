@@ -31,24 +31,19 @@ class Bot:
             return None
         
         if self.difficulty == Difficulty.EASY:
-            # Random move
             return random.choice(valid_moves)
         elif self.difficulty == Difficulty.MEDIUM:
-            # Prefer moves that create smaller differences
             valid_moves.sort(key=lambda x: abs(x[0] - x[1]))
             return valid_moves[0]
-        else:  # EXPERT
-            # Try to minimize opponent's options
+        else: 
             best_move = None
             min_opponent_moves = float('inf')
             
             for move in valid_moves:
-                # Simulate this move
                 temp_numbers = active_numbers.copy()
                 diff = abs(move[0] - move[1])
                 temp_numbers.append(diff)
                 
-                # Count opponent's possible moves
                 opponent_moves = 0
                 for i in range(len(temp_numbers)):
                     for j in range(i + 1, len(temp_numbers)):
@@ -67,7 +62,6 @@ class Game(Gtk.Window):
         self.set_default_size(800, 600)
         self.set_border_width(10)
         
-        # Game state
         self.game_mode = GameMode.VS_BOT
         self.difficulty = Difficulty.MEDIUM
         self.bot = Bot(self.difficulty)
@@ -78,7 +72,6 @@ class Game(Gtk.Window):
         self.winner = None
         self.move_history = []
         
-        # UI setup
         self._setup_css()
         self._build_ui()
         self.show_menu()
@@ -139,33 +132,26 @@ class Game(Gtk.Window):
         )
     
     def _build_ui(self):
-        # Main container
         self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(self.main_box)
         
-        # Menu container
         self.menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         self.menu_box.set_name("menu_box")
         self.menu_box.set_halign(Gtk.Align.CENTER)
         self.menu_box.set_valign(Gtk.Align.CENTER)
         
-        # Game container
         self.game_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.game_box.set_name("game_box")
         
-        # Build menu
         self._build_menu()
         
-        # Build game UI
         self._build_game_ui()
     
     def _build_menu(self):
-        # Title
         title = Gtk.Label(label="Euclid's Game")
         title.get_style_context().add_class("info_label")
         self.menu_box.pack_start(title, False, False, 0)
         
-        # Game mode selection
         mode_label = Gtk.Label(label="Select Game Mode:")
         self.menu_box.pack_start(mode_label, False, False, 0)
         
@@ -178,7 +164,6 @@ class Game(Gtk.Window):
         mode_box.pack_start(self.vs_human_radio, False, False, 0)
         self.menu_box.pack_start(mode_box, False, False, 0)
         
-        # Difficulty selection
         self.difficulty_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         diff_label = Gtk.Label(label="Select Difficulty:")
         self.difficulty_box.pack_start(diff_label, False, False, 0)
@@ -200,16 +185,13 @@ class Game(Gtk.Window):
         
         self.menu_box.pack_start(self.difficulty_box, False, False, 0)
         
-        # Start button
         start_button = Gtk.Button(label="Start Game")
         start_button.connect("clicked", self.on_start_game)
         self.menu_box.pack_start(start_button, False, False, 20)
         
-        # Connect radio button signals
         self.vs_bot_radio.connect("toggled", self.on_mode_changed)
     
     def _build_game_ui(self):
-        # Header with turn info
         header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         header_box.set_homogeneous(True)
         
@@ -225,18 +207,15 @@ class Game(Gtk.Window):
         
         self.game_box.pack_start(header_box, False, False, 0)
         
-        # Main game area
         game_paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         self.game_box.pack_start(game_paned, True, True, 0)
         
-        # Left side - Number board
         left_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         
         board_label = Gtk.Label(label="Number Board")
         board_label.get_style_context().add_class("info_label")
         left_box.pack_start(board_label, False, False, 0)
         
-        # Scrolled window for numbers
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scrolled.set_min_content_width(400)
@@ -249,7 +228,6 @@ class Game(Gtk.Window):
         
         left_box.pack_start(scrolled, True, True, 0)
         
-        # Selection display
         self.selection_label = Gtk.Label()
         self.selection_label.set_markup("<b>Selection:</b> None")
         left_box.pack_start(self.selection_label, False, False, 0)
@@ -257,7 +235,6 @@ class Game(Gtk.Window):
         self.calculation_label = Gtk.Label()
         left_box.pack_start(self.calculation_label, False, False, 0)
         
-        # Right side - Game info
         right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         right_box.set_margin_left(10)
         
@@ -265,12 +242,10 @@ class Game(Gtk.Window):
         info_label.get_style_context().add_class("info_label")
         right_box.pack_start(info_label, False, False, 0)
         
-        # Stats
         self.stats_label = Gtk.Label()
         self.stats_label.set_halign(Gtk.Align.START)
         right_box.pack_start(self.stats_label, False, False, 0)
         
-        # Move history
         history_label = Gtk.Label(label="Move History:")
         history_label.set_halign(Gtk.Align.START)
         right_box.pack_start(history_label, False, False, 0)
@@ -283,7 +258,6 @@ class Game(Gtk.Window):
         history_scrolled.add(self.history_box)
         right_box.pack_start(history_scrolled, True, True, 0)
         
-        # Add to paned
         game_paned.pack1(left_box, True, False)
         game_paned.pack2(right_box, False, False)
         game_paned.set_position(500)
@@ -307,10 +281,8 @@ class Game(Gtk.Window):
             self.difficulty_box.hide()
     
     def on_start_game(self, widget):
-        # Set game mode
         if self.vs_bot_radio.get_active():
             self.game_mode = GameMode.VS_BOT
-            # Set difficulty
             if self.easy_radio.get_active():
                 self.difficulty = Difficulty.EASY
             elif self.medium_radio.get_active():
@@ -332,14 +304,12 @@ class Game(Gtk.Window):
         self.winner = None
         self.move_history = []
         
-        # Clear UI
         for child in self.numbers_grid.get_children():
             self.numbers_grid.remove(child)
         
         for child in self.history_box.get_children():
             self.history_box.remove(child)
         
-        # Add initial numbers
         num1 = random.randint(20, 40)
         num2 = random.randint(60, 80)
         self.active_numbers = [num1, num2]
@@ -349,11 +319,9 @@ class Game(Gtk.Window):
         self.update_stats()
     
     def update_board(self):
-        # Clear the board
         for child in self.numbers_grid.get_children():
             self.numbers_grid.remove(child)
         
-        # Add number buttons
         for i in range(1, 101):
             if i in self.active_numbers:
                 button = Gtk.Button(label=str(i))
@@ -384,7 +352,6 @@ class Game(Gtk.Window):
         self.update_board()
         self.update_selection_display()
         
-        # Make move if 2 numbers selected
         if len(self.selected_numbers) == 2:
             self.make_move()
     
@@ -417,17 +384,14 @@ class Game(Gtk.Window):
         diff = abs(num1 - num2)
         
         if diff in self.active_numbers:
-            # Invalid move
             self.selected_numbers = []
             self.update_board()
             self.update_selection_display()
             return False
         
-        # Valid move
         self.active_numbers.append(diff)
         self.active_numbers.sort()
         
-        # Add to history
         move_text = f"Player {self.current_player}: {num1} - {num2} = {diff}"
         self.move_history.append({
             'player': self.current_player,
@@ -447,15 +411,12 @@ class Game(Gtk.Window):
         self.update_selection_display()
         self.update_stats()
         
-        # Check for game over
         if self.check_game_over():
             self.handle_game_over()
         else:
-            # Switch player
             self.current_player = 2 if self.current_player == 1 else 1
             self.update_turn_label()
             
-            # Bot move
             if self.current_player == 2 and self.game_mode == GameMode.VS_BOT:
                 GLib.timeout_add(1000, self.bot_move)
         
@@ -475,7 +436,6 @@ class Game(Gtk.Window):
         return False
     
     def check_game_over(self):
-        # Check if any valid moves exist
         for i in range(len(self.active_numbers)):
             for j in range(i + 1, len(self.active_numbers)):
                 diff = abs(self.active_numbers[i] - self.active_numbers[j])
@@ -487,7 +447,6 @@ class Game(Gtk.Window):
         self.game_over = True
         self.winner = 2 if self.current_player == 1 else 1
         
-        # Show game over dialog
         dialog = Gtk.MessageDialog(
             parent=self,
             flags=0,
@@ -508,7 +467,6 @@ class Game(Gtk.Window):
         dialog.run()
         dialog.destroy()
         
-        # Return to menu
         self.show_menu()
     
     def update_turn_label(self):
@@ -542,7 +500,6 @@ Valid Moves Left: {valid_moves}"""
     
         state = {}
         
-        # Test each field individually
         try:
             state['game_mode'] = self.game_mode.value
             json.dumps({'test': state['game_mode']})  # Test if serializable
@@ -615,7 +572,6 @@ Valid Moves Left: {valid_moves}"""
             state['show_menu'] = True
         
         try:
-            # Check if Theme.LIGHT exists and is comparable
             if hasattr(self, 'theme') and hasattr(Theme, 'LIGHT'):
                 state['theme'] = 'LIGHT' if self.theme == Theme.LIGHT else 'DARK'
             else:
@@ -633,7 +589,6 @@ Valid Moves Left: {valid_moves}"""
         print(f"DEBUG: State keys received: {list(state.keys()) if state else 'None'}")
         
         try:
-            # Load game mode
             try:
                 game_mode_value = state.get('game_mode', GameMode.VS_BOT.value)
                 print(f"DEBUG: Loading game_mode = {game_mode_value}")
@@ -643,7 +598,6 @@ Valid Moves Left: {valid_moves}"""
                 print(f"ERROR: Failed to load game_mode: {e}")
                 self.game_mode = GameMode.VS_BOT
             
-            # Load difficulty
             try:
                 difficulty_value = state.get('difficulty', Difficulty.MEDIUM.value)
                 print(f"DEBUG: Loading difficulty = {difficulty_value}")
@@ -655,7 +609,6 @@ Valid Moves Left: {valid_moves}"""
                 self.difficulty = Difficulty.MEDIUM
                 self.bot = Bot(self.difficulty)
             
-            # Load active numbers
             try:
                 self.active_numbers = state.get('active_numbers', [])
                 print(f"DEBUG: Loaded {len(self.active_numbers)} active numbers: {self.active_numbers}")
@@ -663,7 +616,6 @@ Valid Moves Left: {valid_moves}"""
                 print(f"ERROR: Failed to load active_numbers: {e}")
                 self.active_numbers = []
             
-            # Load selected numbers
             try:
                 self.selected_numbers = state.get('selected_numbers', [])
                 print(f"DEBUG: Loaded {len(self.selected_numbers)} selected numbers: {self.selected_numbers}")
@@ -671,7 +623,6 @@ Valid Moves Left: {valid_moves}"""
                 print(f"ERROR: Failed to load selected_numbers: {e}")
                 self.selected_numbers = []
             
-            # Load current player
             try:
                 self.current_player = state.get('current_player', 1)
                 print(f"DEBUG: Current player = {self.current_player}")
@@ -679,7 +630,6 @@ Valid Moves Left: {valid_moves}"""
                 print(f"ERROR: Failed to load current_player: {e}")
                 self.current_player = 1
             
-            # Load game over status
             try:
                 self.game_over = state.get('game_over', False)
                 print(f"DEBUG: Game over = {self.game_over}")
@@ -687,7 +637,6 @@ Valid Moves Left: {valid_moves}"""
                 print(f"ERROR: Failed to load game_over: {e}")
                 self.game_over = False
             
-            # Load winner
             try:
                 self.winner = state.get('winner', None)
                 print(f"DEBUG: Winner = {self.winner}")
@@ -695,7 +644,6 @@ Valid Moves Left: {valid_moves}"""
                 print(f"ERROR: Failed to load winner: {e}")
                 self.winner = None
             
-            # Load move history
             try:
                 self.move_history = state.get('move_history', [])
                 print(f"DEBUG: Loaded {len(self.move_history)} moves in history")
@@ -705,36 +653,39 @@ Valid Moves Left: {valid_moves}"""
                 print(f"ERROR: Failed to load move_history: {e}")
                 self.move_history = []
             
-            # Load show menu
-            try:
-                self.show_menu = state.get('show_menu', True)
-                print(f"DEBUG: Show menu = {self.show_menu}")
-            except Exception as e:
-                print(f"ERROR: Failed to load show_menu: {e}")
-                self.show_menu = True
+            game_in_progress = state.get('game_in_progress', False)
+            print(f"DEBUG: Game in progress = {game_in_progress}")
             
-            # Load theme
-            try:
-                theme_name = state.get('theme', 'LIGHT')
-                print(f"DEBUG: Loading theme = {theme_name}")
-                # Uncomment when Theme is properly defined
-                # self.theme = Theme.DARK if theme_name == 'DARK' else Theme.LIGHT
-            except Exception as e:
-                print(f"ERROR: Failed to load theme: {e}")
-            
-            # Update UI if game is in progress
-            if not self.show_menu and self.active_numbers:
-                print("DEBUG: Game in progress, updating UI")
-                self.game_start_time = time.time()
-                # Reset some UI elements
-                self.animations = []
-                self.particles = []
-                self.hover_effects = {}
-                self.bot_thinking = False
+            if self.active_numbers and len(self.active_numbers) > 0:
+                print("DEBUG: Game was in progress, restoring UI")
                 
-                # If we have an active game, make sure we're not stuck
-                if self.current_player == 2 and self.game_mode == GameMode.VS_BOT and not self.game_over:
-                    print("DEBUG: It's bot's turn after loading")
+                self.show_game()
+                
+                self.update_board()
+                self.update_turn_label()
+                self.update_stats()
+                self.update_selection_display()
+                
+                for child in self.history_box.get_children():
+                    self.history_box.remove(child)
+                
+                for move in self.move_history:
+                    move_text = f"Player {move['player']}: {move['num1']} - {move['num2']} = {move['diff']}"
+                    history_label = Gtk.Label(label=move_text)
+                    history_label.get_style_context().add_class("history_label")
+                    history_label.set_halign(Gtk.Align.START)
+                    self.history_box.pack_start(history_label, False, False, 0)
+                
+                self.history_box.show_all()
+                
+                if (self.current_player == 2 and 
+                    self.game_mode == GameMode.VS_BOT and 
+                    not self.game_over):
+                    print("DEBUG: Scheduling bot move after load")
+                    GLib.timeout_add(1500, self.bot_move)
+            else:
+                print("DEBUG: No game in progress, showing menu")
+                self.show_menu()
             
             print("DEBUG: load_state completed successfully")
             return True
@@ -745,7 +696,6 @@ Valid Moves Left: {valid_moves}"""
             traceback.print_exc()
             return False
 
-# For GTK timeout
 from gi.repository import GLib
 
 if __name__ == "__main__":

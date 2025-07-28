@@ -2,7 +2,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 import time
-
+from gi.repository import GLib
 from sugar3.activity import activity
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
@@ -12,33 +12,38 @@ from gettext import gettext as _
 import os
 import json
 
-# Import the GTK game (renamed to avoid confusion)
 from game import Game
 
 class Euclids(activity.Activity):
     def __init__(self, handle):
         activity.Activity.__init__(self, handle)
         
-        # Create toolbar
+        self._loaded_from_journal = False
+        self._read_file_called = False
+        
         self._create_toolbar()
         
-        # Create the game instance (GTK-based)
         self.game = Game()
         
-        # Instead of using the game window, extract its main container
-        # Remove the game from its window
         game_content = self.game.main_box
         if game_content.get_parent():
             game_content.get_parent().remove(game_content)
         
-        # Set it as the activity's canvas
         self.set_canvas(game_content)
         
-        # Don't show the game window itself
         self.game.hide()
-        
-        # Start with menu
-        self.game.show_menu()
+
+        from gi.repository import GLib
+        GLib.timeout_add(100, self._check_and_show_menu)
+    
+    def _check_and_show_menu(self):
+        """Show menu only if we haven't loaded from journal"""
+        if not self._read_file_called:
+            print("DEBUG: No journal file to load, showing menu")
+            self.game.show_menu()
+        else:
+            print("DEBUG: Journal file is being loaded, not showing menu")
+        return False 
     
     def _create_toolbar(self):
         toolbar_box = ToolbarBox()
@@ -71,7 +76,6 @@ class Euclids(activity.Activity):
         self.game.show_menu()
     
     def _show_help(self, button):
-        # Create a simple help dialog
         dialog = Gtk.MessageDialog(
             parent=self,
             flags=0,
@@ -92,22 +96,22 @@ class Euclids(activity.Activity):
         """Load game state from Journal"""
         print(f"DEBUG: read_file called with path: {file_path}")
         
+        self._read_file_called = True
+        
         if not os.path.exists(file_path):
             print(f"ERROR: File does not exist: {file_path}")
+            self.game.show_menu()
             return
         
         try:
-            # Check file stats
             file_stats = os.stat(file_path)
             print(f"DEBUG: File size: {file_stats.st_size} bytes")
             print(f"DEBUG: File modified: {time.ctime(file_stats.st_mtime)}")
             
-            # Read the file
             with open(file_path, 'r') as f:
                 content = f.read()
                 print(f"DEBUG: Read {len(content)} characters from file")
                 
-                # Try to parse JSON
                 try:
                     data = json.loads(content)
                     print(f"DEBUG: Successfully parsed JSON")
@@ -115,42 +119,39 @@ class Euclids(activity.Activity):
                 except json.JSONDecodeError as e:
                     print(f"ERROR: JSON parsing failed: {e}")
                     print(f"DEBUG: First 200 chars of content: {content[:200]}")
+                    self.game.show_menu()
                     return
             
-            # Extract metadata
             loaded_metadata = data.get('metadata', {})
             print(f"DEBUG: Metadata: {loaded_metadata}")
             
-            # Extract game state
             game_state = data.get('game_state', {})
             if game_state:
                 print(f"DEBUG: Game state found with keys: {list(game_state.keys())}")
                 
-                # Check if game has load_state method
                 if hasattr(self.game, 'load_state'):
-                    print("DEBUG: Calling game.load_state()")
+                    print("DEBUG: Loading game state immediately")
                     if self.game.load_state(game_state):
                         self._loaded_from_journal = True
                         print("DEBUG: Game state loaded successfully")
-                        
-                        # Force a redraw
-                        if hasattr(self._pygamecanvas, 'get_pygame_widget'):
-                            pygame_widget = self._pygamecanvas.get_pygame_widget()
-                            if pygame_widget:
-                                pygame_widget.queue_draw()
                     else:
                         print("ERROR: game.load_state() returned False")
+                        self.game.show_menu()
                 else:
                     print("ERROR: game object doesn't have load_state method")
+                    self.game.show_menu()
             else:
                 print("WARNING: No game_state in loaded data")
+                self.game.show_menu()
                 
         except IOError as e:
             print(f"ERROR: IO error reading file: {e}")
+            self.game.show_menu()
         except Exception as e:
             print(f"ERROR: Unexpected error reading file: {e}")
             import traceback
             traceback.print_exc()
+            self.game.show_menu()
 
     def write_file(self, file_path):
         """Save game state to Journal"""
@@ -167,7 +168,6 @@ class Euclids(activity.Activity):
                 'game_state': {}
             }
             
-            # Get game state
             if hasattr(self.game, 'save_state'):
                 print("DEBUG: Calling game.save_state()")
                 game_state = self.game.save_state()
@@ -176,7 +176,6 @@ class Euclids(activity.Activity):
             else:
                 print("ERROR: game object doesn't have save_state method")
             
-            # Convert to JSON string first to check if serializable
             try:
                 print("DEBUG: Serializing data to JSON")
                 json_string = json.dumps(data, indent=2)
@@ -186,20 +185,17 @@ class Euclids(activity.Activity):
                 print(f"ERROR: JSON serialization failed: {e}")
                 return
             
-            # Write to file
             with open(file_path, 'w') as f:
                 f.write(json_string)
-                f.flush()  # Ensure data is written
-                os.fsync(f.fileno())  # Force write to disk
+                f.flush()
+                os.fsync(f.fileno())
                 
             print(f"DEBUG: File written successfully")
             
-            # Verify the file was written
             if os.path.exists(file_path):
                 file_size = os.path.getsize(file_path)
                 print(f"DEBUG: Verified file exists, size = {file_size} bytes")
                 
-                # Read it back to verify
                 with open(file_path, 'r') as f:
                     verify_content = f.read()
                     print(f"DEBUG: Verified content length = {len(verify_content)}")
@@ -213,7 +209,6 @@ class Euclids(activity.Activity):
 
     def can_close(self):
         """Called when the activity is about to close"""
-        # Make sure we save the current state
         return True
 
     def close(self):
