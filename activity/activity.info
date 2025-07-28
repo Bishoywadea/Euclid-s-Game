@@ -1,8 +1,9 @@
 [Activity]
-name = Euclids
+name = Euclid's Game
 activity_version = 1
 bundle_id = org.sugarlabs.Euclids
 exec = sugar-activity3 activity.Euclids
 icon = activity-euclids
-license = GPLv2+
+license = GPLv3+
 repository = https://github.com/Bishoywadea/Euclid-s-Game.git
+mime_types = application/x-euclids-game

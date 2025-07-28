@@ -1,83 +1,223 @@
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
+import time
 
-import pygame
 from sugar3.activity import activity
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
-from sugar3.graphics.palette import Palette
 from gettext import gettext as _
+import os
+import json
 
-import sugargame.canvas
+# Import the GTK game (renamed to avoid confusion)
 from game import Game
 
 class Euclids(activity.Activity):
     def __init__(self, handle):
         activity.Activity.__init__(self, handle)
-
+        
+        # Create toolbar
         self._create_toolbar()
-
-        # Game logic and visuals
+        
+        # Create the game instance (GTK-based)
         self.game = Game()
-
-        # Sugar Pygame canvas
-        self._pygamecanvas = sugargame.canvas.PygameCanvas(
-            self, main=self.game.run, modules=[pygame.display, pygame.font]
-        )
-        self.game.set_canvas(self._pygamecanvas)
-
-        self.set_canvas(self._pygamecanvas)
-        self._pygamecanvas.grab_focus()
-
+        
+        # Instead of using the game window, extract its main container
+        # Remove the game from its window
+        game_content = self.game.main_box
+        if game_content.get_parent():
+            game_content.get_parent().remove(game_content)
+        
+        # Set it as the activity's canvas
+        self.set_canvas(game_content)
+        
+        # Don't show the game window itself
+        self.game.hide()
+        
+        # Start with menu
+        self.game.show_menu()
+    
     def _create_toolbar(self):
         toolbar_box = ToolbarBox()
         self.set_toolbar_box(toolbar_box)
-
+        
         activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, -1)
-
+        
         menu_button = ToolButton('go-home')
         menu_button.set_tooltip(_('Main Menu'))
-        menu_button.connect("clicked", self._reset_game)
+        menu_button.connect("clicked", self._show_menu)
         toolbar_box.toolbar.insert(menu_button, -1)
         
-        theme_button = ToolButton("camera")
-        theme_button.set_tooltip("Toggle Theme")
-        theme_button.connect("clicked", self._toggle_theme)
-        toolbar_box.toolbar.insert(theme_button, -1)
-
         help_button = ToolButton("toolbar-help")
-        help_button.set_tooltip("Help")
+        help_button.set_tooltip(_("Help"))
         help_button.connect("clicked", self._show_help)
         toolbar_box.toolbar.insert(help_button, -1)
-
+        
         separator = Gtk.SeparatorToolItem()
         separator.props.draw = False
         separator.set_expand(True)
         toolbar_box.toolbar.insert(separator, -1)
-
+        
         stop_button = StopButton(self)
         toolbar_box.toolbar.insert(stop_button, -1)
-
+        
         toolbar_box.show_all()
-
+    
+    def _show_menu(self, button):
+        self.game.show_menu()
+    
     def _show_help(self, button):
-        self.game.toggle_help()
-
-    def _reset_game(self, button):
-        self.game.handle_game_over_click()
-
-    def _toggle_theme(self, button):
-        self.game.toggle_theme()
-
+        # Create a simple help dialog
+        dialog = Gtk.MessageDialog(
+            parent=self,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=_("How to Play Euclid's Game")
+        )
+        dialog.format_secondary_text(_(
+            "1. Select two numbers from the board\n"
+            "2. Their difference will be added if it's not already there\n"
+            "3. The player who cannot make a valid move loses\n"
+            "4. Try to force your opponent into a position with no moves!"
+        ))
+        dialog.run()
+        dialog.destroy()
+    
     def read_file(self, file_path):
-        self.game.read_file(file_path)
+        """Load game state from Journal"""
+        print(f"DEBUG: read_file called with path: {file_path}")
+        
+        if not os.path.exists(file_path):
+            print(f"ERROR: File does not exist: {file_path}")
+            return
+        
+        try:
+            # Check file stats
+            file_stats = os.stat(file_path)
+            print(f"DEBUG: File size: {file_stats.st_size} bytes")
+            print(f"DEBUG: File modified: {time.ctime(file_stats.st_mtime)}")
+            
+            # Read the file
+            with open(file_path, 'r') as f:
+                content = f.read()
+                print(f"DEBUG: Read {len(content)} characters from file")
+                
+                # Try to parse JSON
+                try:
+                    data = json.loads(content)
+                    print(f"DEBUG: Successfully parsed JSON")
+                    print(f"DEBUG: Top-level keys: {list(data.keys())}")
+                except json.JSONDecodeError as e:
+                    print(f"ERROR: JSON parsing failed: {e}")
+                    print(f"DEBUG: First 200 chars of content: {content[:200]}")
+                    return
+            
+            # Extract metadata
+            loaded_metadata = data.get('metadata', {})
+            print(f"DEBUG: Metadata: {loaded_metadata}")
+            
+            # Extract game state
+            game_state = data.get('game_state', {})
+            if game_state:
+                print(f"DEBUG: Game state found with keys: {list(game_state.keys())}")
+                
+                # Check if game has load_state method
+                if hasattr(self.game, 'load_state'):
+                    print("DEBUG: Calling game.load_state()")
+                    if self.game.load_state(game_state):
+                        self._loaded_from_journal = True
+                        print("DEBUG: Game state loaded successfully")
+                        
+                        # Force a redraw
+                        if hasattr(self._pygamecanvas, 'get_pygame_widget'):
+                            pygame_widget = self._pygamecanvas.get_pygame_widget()
+                            if pygame_widget:
+                                pygame_widget.queue_draw()
+                    else:
+                        print("ERROR: game.load_state() returned False")
+                else:
+                    print("ERROR: game object doesn't have load_state method")
+            else:
+                print("WARNING: No game_state in loaded data")
+                
+        except IOError as e:
+            print(f"ERROR: IO error reading file: {e}")
+        except Exception as e:
+            print(f"ERROR: Unexpected error reading file: {e}")
+            import traceback
+            traceback.print_exc()
 
     def write_file(self, file_path):
-        self.game.write_file(file_path)
+        """Save game state to Journal"""
+        print(f"DEBUG: write_file called with path: {file_path}")
+        
+        try:
+            data = {
+                'metadata': {
+                    'activity': 'org.sugarlabs.Euclids',
+                    'activity_version': 1,
+                    'mime_type': 'application/x-euclids-game',
+                    'timestamp': time.time()
+                },
+                'game_state': {}
+            }
+            
+            # Get game state
+            if hasattr(self.game, 'save_state'):
+                print("DEBUG: Calling game.save_state()")
+                game_state = self.game.save_state()
+                print(f"DEBUG: Got game state with keys: {list(game_state.keys()) if game_state else 'None'}")
+                data['game_state'] = game_state
+            else:
+                print("ERROR: game object doesn't have save_state method")
+            
+            # Convert to JSON string first to check if serializable
+            try:
+                print("DEBUG: Serializing data to JSON")
+                json_string = json.dumps(data, indent=2)
+                print(f"DEBUG: Data keys: {json_string}")
+                print(f"DEBUG: JSON serialization successful, length: {len(json_string)}")
+            except Exception as e:
+                print(f"ERROR: JSON serialization failed: {e}")
+                return
+            
+            # Write to file
+            with open(file_path, 'w') as f:
+                f.write(json_string)
+                f.flush()  # Ensure data is written
+                os.fsync(f.fileno())  # Force write to disk
+                
+            print(f"DEBUG: File written successfully")
+            
+            # Verify the file was written
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                print(f"DEBUG: Verified file exists, size = {file_size} bytes")
+                
+                # Read it back to verify
+                with open(file_path, 'r') as f:
+                    verify_content = f.read()
+                    print(f"DEBUG: Verified content length = {len(verify_content)}")
+            else:
+                print("ERROR: File doesn't exist after writing!")
+                
+        except Exception as e:
+            print(f"ERROR: Writing file failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def can_close(self):
+        """Called when the activity is about to close"""
+        # Make sure we save the current state
+        return True
 
     def close(self):
-        self.game.quit()
+        """Clean shutdown"""
+        if hasattr(self.game, 'quit'):
+            self.game.quit()
+        super(Euclids, self).close()
