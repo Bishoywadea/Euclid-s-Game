@@ -89,7 +89,7 @@ class Game(Gtk.Window):
         self.game_over = False
         self.winner = None
         self.move_history = []
-        
+
         self._collab = None
         self.is_host = False
         self.network_players = []
@@ -194,7 +194,7 @@ class Game(Gtk.Window):
         mode_label = Gtk.Label(label="Select Game Mode:")
         self.menu_box.pack_start(mode_label, False, False, 0)
         
-        mode_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.vs_bot_radio = Gtk.RadioButton.new_with_label(None, "VS Bot")
         self.vs_human_radio = Gtk.RadioButton.new_with_label_from_widget(
             self.vs_bot_radio, "VS Human"
@@ -236,17 +236,19 @@ class Game(Gtk.Window):
     
     def _build_game_ui(self):
         header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        header_box.set_homogeneous(True)
-        
-        self.turn_label = Gtk.Label()
-        self.turn_label.get_style_context().add_class("turn_label")
+        header_box.set_homogeneous(False)
         
         back_button = Gtk.Button(label="Back to Menu")
         back_button.connect("clicked", lambda w: self.show_menu())
-        
         header_box.pack_start(back_button, False, False, 0)
+        
+        self.turn_label = Gtk.Label()
+        self.turn_label.get_style_context().add_class("turn_label")
         header_box.pack_start(self.turn_label, True, True, 0)
-        header_box.pack_start(Gtk.Box(), False, False, 0) 
+        
+        self.connection_status = Gtk.Label()
+        self.connection_status.set_markup("<span color='green'>●</span> Connected")
+        header_box.pack_end(self.connection_status, False, False, 10)
         
         self.game_box.pack_start(header_box, False, False, 0)
         
@@ -315,6 +317,13 @@ class Game(Gtk.Window):
         for child in self.main_box.get_children():
             self.main_box.remove(child)
         self.main_box.pack_start(self.game_box, True, True, 0)
+        
+        if hasattr(self, 'connection_status'):
+            if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+                self.connection_status.show()
+            else:
+                self.connection_status.hide()
+        
         self.main_box.show_all()
     
     def on_mode_changed(self, widget):
@@ -367,6 +376,8 @@ class Game(Gtk.Window):
         self.update_stats()
     
     def update_board(self):
+        print(f"DEBUG: update_board() - current_player={self.current_player}, my_player={self.my_player_number}, mode={self.game_mode}")
+        
         for child in self.numbers_grid.get_children():
             self.numbers_grid.remove(child)
         
@@ -393,7 +404,7 @@ class Game(Gtk.Window):
             return
         
         if self.current_player == 2 and self.game_mode == GameMode.VS_BOT:
-            return
+            return 
         
         if number in self.selected_numbers:
             self.selected_numbers.remove(number)
@@ -441,22 +452,50 @@ class Game(Gtk.Window):
             self.update_selection_display()
             return False
         
+        if (self.game_mode == GameMode.NETWORK_MULTIPLAYER and 
+            self.current_player != self.my_player_number):
+            print("Not your turn!")
+            return False
+
+        print(f"DEBUG: Making move - Player {self.current_player}: {num1} - {num2} = {diff}")
+
         self.active_numbers.append(diff)
         self.active_numbers.sort()
         
         move_text = f"Player {self.current_player}: {num1} - {num2} = {diff}"
-        self.move_history.append({
+        move_data = {
             'player': self.current_player,
             'num1': num1,
             'num2': num2,
             'diff': diff
-        })
+        }
+        self.move_history.append(move_data)
         
         history_label = Gtk.Label(label=move_text)
         history_label.get_style_context().add_class("history_label")
+        history_label.get_style_context().add_class(f"player{self.current_player}_move")
         history_label.set_halign(Gtk.Align.START)
         self.history_box.pack_start(history_label, False, False, 0)
         self.history_box.show_all()
+        
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            if self._collab:
+                move_message = {
+                    'action': 'move',
+                    'player': self.current_player,
+                    'num1': num1,
+                    'num2': num2,
+                    'diff': diff,
+                    'active_numbers': self.active_numbers.copy()
+                }
+                print(f"DEBUG: Sending move message: {move_message}")
+                try:
+                    self._collab.post(move_message)
+                    print("DEBUG: Move message sent successfully")
+                except Exception as e:
+                    print(f"ERROR: Failed to send move: {e}")
+            else:
+                print("ERROR: No collab wrapper available to send move!")
         
         self.selected_numbers = []
         self.update_board()
@@ -499,6 +538,13 @@ class Game(Gtk.Window):
         self.game_over = True
         self.winner = 2 if self.current_player == 1 else 1
         
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER and self._collab:
+            self._collab.post({
+                'action': 'game_over',
+                'winner': self.winner,
+                'final_state': self.active_numbers.copy()
+            })
+        
         dialog = Gtk.MessageDialog(
             parent=self,
             flags=0,
@@ -512,8 +558,14 @@ class Game(Gtk.Window):
                 message = "Congratulations! You won!"
             else:
                 message = "The bot won this time. Try again!"
-        else:
+        elif self.game_mode == GameMode.LOCAL_MULTIPLAYER:
             message = f"Player {self.winner} wins!"
+        else:
+            if self.winner == self.my_player_number:
+                message = "Congratulations! You won!"
+            else:
+                opponent_name = self.opponent_buddy.props.nick if self.opponent_buddy else "Opponent"
+                message = f"{opponent_name} wins!"
         
         dialog.format_secondary_text(message)
         dialog.run()
@@ -850,10 +902,10 @@ Valid Moves Left: {valid_moves}"""
                 
                 self.network_players.append(buddy)
                 
-                num_players = len(self.network_players) + 1  # +1 for self
+                num_players = len(self.network_players) + 1 
                 self.lobby_status_label.set_text(f"{num_players} players connected")
                 
-                if len(self.network_players) == 1:
+                if len(self.network_players) == 1: 
                     self.opponent_buddy = buddy
                     self.lobby_spinner.stop()
                     
@@ -868,7 +920,7 @@ Valid Moves Left: {valid_moves}"""
                                 'action': 'player_ready',
                                 'player_nick': self._get_my_nick()
                             })
-    
+
     def _get_my_nick(self):
         """Get our own nickname for display"""
         try:
@@ -905,6 +957,9 @@ Valid Moves Left: {valid_moves}"""
         """Handle when opponent disconnects during game"""
         self.game_over = True
         
+        if hasattr(self, 'connection_status'):
+            self.connection_status.set_markup("<span color='red'>●</span> Disconnected")
+        
         dialog = Gtk.MessageDialog(
             parent=self,
             flags=0,
@@ -920,8 +975,17 @@ Valid Moves Left: {valid_moves}"""
 
     def on_message_received(self, buddy, message):
         """Handle incoming collaboration messages"""
+        print("DEBUG: on_message_received called in game.py")
+        
+        if not isinstance(message, dict):
+            print(f"ERROR: Message is not a dict, it's {type(message)}")
+            return
+        
         action = message.get('action')
-        print(f"Received message: {action} from {buddy.props.nick}")
+        print(f"DEBUG: Action = {action}")
+        print(f"DEBUG: From buddy = {buddy.props.nick}")
+        print(f"DEBUG: Game mode = {self.game_mode}")
+        print(f"DEBUG: Game started = {self.game_started}")
         
         if action == 'player_ready':
             if self.is_host and not self.game_started:
@@ -933,10 +997,123 @@ Valid Moves Left: {valid_moves}"""
                 self.game_started = True
                 self.opponent_buddy = buddy
                 
+                self.my_player_number = 2
+                
                 self._init_network_game(message)
         
         elif action == 'move':
-            pass
+            print("DEBUG: Received move action")
+            if self.game_mode == GameMode.NETWORK_MULTIPLAYER and self.game_started:
+                print("DEBUG: Processing opponent move")
+                self._handle_opponent_move(message)
+            else:
+                print(f"DEBUG: Not processing move - game_mode={self.game_mode}, game_started={self.game_started}")
+        
+        elif action == 'game_over':
+            if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+                self._handle_opponent_game_over(message)
+        
+        else:
+            print(f"DEBUG: Unknown action: {action}")
+    
+    def _handle_opponent_game_over(self, data):
+        """Handle game over message from opponent"""
+        winner = data.get('winner')
+        final_state = data.get('final_state', [])
+        
+        if sorted(self.active_numbers) != sorted(final_state):
+            print("WARNING: Final state mismatch!")
+            self.active_numbers = final_state.copy()
+        
+        self.game_over = True
+        self.winner = winner
+        
+        self.handle_game_over()
+    
+    def _handle_opponent_move(self, move_data):
+        """Process a move received from the opponent"""
+        player = move_data.get('player')
+        num1 = move_data.get('num1')
+        num2 = move_data.get('num2')
+        diff = move_data.get('diff')
+        received_numbers = move_data.get('active_numbers', [])
+        
+        print(f"Processing opponent move: {num1} - {num2} = {diff}")
+        
+        if player != self.current_player:
+            print(f"ERROR: Received move for player {player} but current player is {self.current_player}")
+            return
+        
+        if player == self.my_player_number:
+            print("ERROR: Received move from opponent but it's marked as our move")
+            return
+        
+        if diff in self.active_numbers:
+            print(f"ERROR: Invalid move received - {diff} already exists")
+            return
+        
+        if abs(num1 - num2) != diff:
+            print(f"ERROR: Invalid calculation - {num1} - {num2} != {diff}")
+            return
+        
+        if num1 not in self.active_numbers or num2 not in self.active_numbers:
+            print(f"ERROR: Invalid numbers used - {num1} or {num2} not in active numbers")
+            return
+        
+        self.active_numbers.append(diff)
+        self.active_numbers.sort()
+        
+        if sorted(self.active_numbers) != sorted(received_numbers):
+            print("WARNING: State mismatch after move!")
+            print(f"Local: {sorted(self.active_numbers)}")
+            print(f"Remote: {sorted(received_numbers)}")
+            self.active_numbers = received_numbers.copy()
+        
+        move_text = f"Player {player}: {num1} - {num2} = {diff}"
+        move_history_data = {
+            'player': player,
+            'num1': num1,
+            'num2': num2,
+            'diff': diff
+        }
+        self.move_history.append(move_history_data)
+        
+        history_label = Gtk.Label(label=move_text)
+        history_label.get_style_context().add_class("history_label")
+        history_label.get_style_context().add_class(f"player{player}_move")
+        history_label.set_halign(Gtk.Align.START)
+        self.history_box.pack_start(history_label, False, False, 0)
+        self.history_box.show_all()
+        self.update_stats()
+        
+        if self.check_game_over():
+            self.handle_game_over()
+        else:
+            self.current_player = 2 if self.current_player == 1 else 1
+            self.update_turn_label()
+            
+            self.update_board()
+            
+            if self.current_player == self.my_player_number:
+                self._notify_your_turn()
+                print(f"DEBUG: It's now our turn (player {self.my_player_number})")
+            else:
+                print(f"DEBUG: Still opponent's turn (we are player {self.my_player_number}, current is {self.current_player})")
+    
+    def _notify_your_turn(self):
+        """Notify player it's their turn"""
+        original_markup = self.turn_label.get_markup()
+        
+        def flash_on():
+            self.turn_label.set_markup("<span background='#4CAF50' foreground='white'><b>  YOUR TURN!  </b></span>")
+            GLib.timeout_add(500, flash_off)
+            return False
+        
+        def flash_off():
+            self.turn_label.set_markup(original_markup)
+            return False
+        
+        GLib.timeout_add(100, flash_on)
 
     def update_lobby_status(self, status):
         """Update the lobby status message"""
@@ -945,7 +1122,7 @@ Valid Moves Left: {valid_moves}"""
     def _add_start_button(self):
         """Add start game button for host"""
         if hasattr(self, 'lobby_start_button'):
-            return
+            return 
         
         self.lobby_start_button = Gtk.Button(label="Start Game")
         self.lobby_start_button.get_style_context().add_class("suggested-action")
@@ -987,6 +1164,8 @@ Valid Moves Left: {valid_moves}"""
         """Initialize the network game with given state"""
         print(f"Initializing network game with state: {initial_state}")
         
+        self.game_mode = GameMode.NETWORK_MULTIPLAYER
+        
         self.active_numbers = initial_state['active_numbers'].copy()
         self.selected_numbers = []
         self.current_player = initial_state['current_player']
@@ -1025,17 +1204,6 @@ Valid Moves Left: {valid_moves}"""
         dialog.run()
         dialog.destroy()
 
-    def get_data(self):
-        """CollabWrapper calls this to get state when someone joins mid-game"""
-        if hasattr(self.game, 'get_game_state_for_sync'):
-            return self.game.get_game_state_for_sync()
-        return {}
-
-    def set_data(self, data):
-        """CollabWrapper calls this to set state when joining mid-game"""
-        if hasattr(self.game, 'set_game_state_from_sync'):
-            self.game.set_game_state_from_sync(data)
-
     def get_game_state_for_sync(self):
         """Get current game state for syncing with joining player"""
         if self.game_mode != GameMode.NETWORK_MULTIPLAYER or not self.game_started:
@@ -1054,7 +1222,7 @@ Valid Moves Left: {valid_moves}"""
         """Set game state when joining a game in progress"""
         if data.get('game_in_progress'):
             print("Joining game in progress...")
-            self.game_mode = GameMode.NETWORK_MULTIPLAYER
+            self.game_mode = GameMode.NETWORK_MULTIPLAYER 
             self.is_host = False
             self.my_player_number = 2
             self.game_started = True

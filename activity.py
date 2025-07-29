@@ -28,7 +28,9 @@ from sugar3.graphics.toolbutton import ToolButton
 from gettext import gettext as _
 import os
 import json
+from collabwrapper import CollabWrapper
 
+from game import Game, GameMode
 from game import Game
 
 class Euclids(activity.Activity):
@@ -39,14 +41,15 @@ class Euclids(activity.Activity):
         self._read_file_called = False
         
         self._create_toolbar()
-
+        
+        self.game = Game()
+        
         self._collab = CollabWrapper(self)
         self._collab.connect('joined', self.__joined_cb)
         self._collab.connect('buddy_joined', self.__buddy_joined_cb)
         self._collab.connect('buddy_left', self.__buddy_left_cb)
         self._collab.connect('message', self.__message_cb)
         
-        self.game = Game()
         self.game.set_collab_wrapper(self._collab)
         
         game_content = self.game.main_box
@@ -56,9 +59,16 @@ class Euclids(activity.Activity):
         self.set_canvas(game_content)
         
         self.game.hide()
-
-        from gi.repository import GLib
+        
+        GLib.timeout_add(500, self._setup_collab)
+        
         GLib.timeout_add(100, self._check_and_show_menu)
+    
+    def _setup_collab(self):
+        """Setup collaboration after everything is initialized"""
+        print("DEBUG: Setting up collaboration")
+        self._collab.setup()
+        return False
     
     def _check_and_show_menu(self):
         """Show menu only if we haven't loaded from journal"""
@@ -261,6 +271,27 @@ class Euclids(activity.Activity):
 
     def __message_cb(self, collab, buddy, message):
         """Called when we receive a message"""
-        print(f"DEBUG: Message from {buddy.props.nick}: {message}")
+        print(f"DEBUG: __message_cb called")
+        print(f"DEBUG: From buddy: {buddy.props.nick}")
+        print(f"DEBUG: Message content: {message}")
+        print(f"DEBUG: Message type: {type(message)}")
+        
         if self.game:
             self.game.on_message_received(buddy, message)
+        else:
+            print("ERROR: No game object to handle message")
+    
+    def get_data(self):
+        """Called by CollabWrapper when someone joins to get current state"""
+        print("DEBUG: get_data called")
+        if hasattr(self.game, 'get_game_state_for_sync'):
+            data = self.game.get_game_state_for_sync()
+            print(f"DEBUG: Returning game state: {data}")
+            return data
+        return {}
+
+    def set_data(self, data):
+        """Called by CollabWrapper when joining to receive current state"""
+        print(f"DEBUG: set_data called with: {data}")
+        if data and hasattr(self.game, 'set_game_state_from_sync'):
+            self.game.set_game_state_from_sync(data)
