@@ -295,3 +295,4 @@ class Euclids(activity.Activity):
         print(f"DEBUG: set_data called with: {data}")
         if data and hasattr(self.game, 'set_game_state_from_sync'):
             self.game.set_game_state_from_sync(data)
+            

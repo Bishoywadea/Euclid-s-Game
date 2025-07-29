@@ -1234,3 +1234,4 @@ from gi.repository import GLib
 if __name__ == "__main__":
     game = EuclidsGame()
     Gtk.main()
+    
