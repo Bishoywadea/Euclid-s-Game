@@ -162,7 +162,7 @@ class Game(Gtk.Window):
         self.game_box.set_name("game_box")
         
         self._build_menu()
-        
+        self._build_lobby_ui()
         self._build_game_ui()
     
     def _build_menu(self):
@@ -225,7 +225,7 @@ class Game(Gtk.Window):
         
         header_box.pack_start(back_button, False, False, 0)
         header_box.pack_start(self.turn_label, True, True, 0)
-        header_box.pack_start(Gtk.Box(), False, False, 0)  # Spacer
+        header_box.pack_start(Gtk.Box(), False, False, 0) 
         
         self.game_box.pack_start(header_box, False, False, 0)
         
@@ -312,13 +312,16 @@ class Game(Gtk.Window):
             else:
                 self.difficulty = Difficulty.EXPERT
             self.bot = Bot(self.difficulty)
+            self.reset_game()
+            self.show_game()
         elif self.vs_human_radio.get_active():
             self.game_mode = GameMode.LOCAL_MULTIPLAYER
+            self.reset_game()
+            self.show_game()
         else:
             self.game_mode = GameMode.NETWORK_MULTIPLAYER
-
-        self.reset_game()
-        self.show_game()
+            self.is_host = True
+            self.show_lobby()
     
     def reset_game(self):
         self.active_numbers = []
@@ -526,7 +529,7 @@ Valid Moves Left: {valid_moves}"""
         
         try:
             state['game_mode'] = self.game_mode.value
-            json.dumps({'test': state['game_mode']})  # Test if serializable
+            json.dumps({'test': state['game_mode']})
         except Exception as e:
             print(f"Error with game_mode: {e}")
             state['game_mode'] = 1
@@ -719,6 +722,128 @@ Valid Moves Left: {valid_moves}"""
             import traceback
             traceback.print_exc()
             return False
+    
+    def _build_lobby_ui(self):
+        """Create the lobby/waiting screen UI"""
+        self.lobby_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        self.lobby_box.set_halign(Gtk.Align.CENTER)
+        self.lobby_box.set_valign(Gtk.Align.CENTER)
+        
+        title = Gtk.Label(label="Network Game Lobby")
+        title.get_style_context().add_class("info_label")
+        self.lobby_box.pack_start(title, False, False, 0)
+        
+        self.lobby_status_label = Gtk.Label(label="Waiting for another player to join...")
+        self.lobby_box.pack_start(self.lobby_status_label, False, False, 0)
+        
+        self.lobby_spinner = Gtk.Spinner()
+        self.lobby_spinner.start()
+        self.lobby_box.pack_start(self.lobby_spinner, False, False, 20)
+        
+        players_label = Gtk.Label(label="Players:")
+        players_label.set_halign(Gtk.Align.START)
+        self.lobby_box.pack_start(players_label, False, False, 0)
+        
+        self.players_listbox = Gtk.ListBox()
+        self.players_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_min_content_height(100)
+        scrolled.set_min_content_width(300)
+        scrolled.add(self.players_listbox)
+        self.lobby_box.pack_start(scrolled, False, False, 0)
+        
+        back_button = Gtk.Button(label="Back to Menu")
+        back_button.connect("clicked", self._leave_lobby)
+        self.lobby_box.pack_start(back_button, False, False, 20)
+
+    def show_lobby(self):
+        """Show the network game lobby"""
+        for child in self.main_box.get_children():
+            self.main_box.remove(child)
+        
+        if not hasattr(self, 'lobby_box'):
+            self._build_lobby_ui()
+        
+        self.main_box.pack_start(self.lobby_box, True, True, 0)
+        self.main_box.show_all()
+        
+        for child in self.players_listbox.get_children():
+            self.players_listbox.remove(child)
+        
+        self_row = Gtk.ListBoxRow()
+        self_label = Gtk.Label(label="You (Host)" if self.is_host else "You")
+        self_label.set_halign(Gtk.Align.START)
+        self_row.add(self_label)
+        self.players_listbox.add(self_row)
+        self.players_listbox.show_all()
+
+    def _leave_lobby(self, widget):
+        """Leave the lobby and go back to menu"""
+        self.lobby_spinner.stop()
+        self.show_menu()
+
+    def set_collab_wrapper(self, collab):
+        """Set the collaboration wrapper reference"""
+        self._collab = collab
+        self.is_host = False
+        self.network_players = []
+
+    def on_collaboration_joined(self):
+        """Called when we successfully join a shared activity"""
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            self.is_host = False
+            self.update_lobby_status("Connected! Waiting for game to start...")
+
+    def on_buddy_joined(self, buddy):
+        """Called when another player joins"""
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            buddy_row = Gtk.ListBoxRow()
+            buddy_label = Gtk.Label(label=buddy.props.nick)
+            buddy_label.set_halign(Gtk.Align.START)
+            buddy_row.add(buddy_label)
+            self.players_listbox.add(buddy_row)
+            self.players_listbox.show_all()
+            
+            self.network_players.append(buddy)
+            
+            if len(self.network_players) >= 1:
+                self.lobby_status_label.set_text("Ready to start! Host can begin the game.")
+                self.lobby_spinner.stop()
+                
+                if self.is_host:
+                    self._add_start_button()
+
+    def on_buddy_left(self, buddy):
+        """Called when a player leaves"""
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            self.network_players = [p for p in self.network_players if p != buddy]
+            
+            if len(self.network_players) < 1:
+                self.lobby_status_label.set_text("Other player left. Waiting for another player...")
+                self.lobby_spinner.start()
+
+    def on_message_received(self, buddy, message):
+        """Handle incoming collaboration messages"""
+        pass
+
+    def update_lobby_status(self, status):
+        """Update the lobby status message"""
+        self.lobby_status_label.set_text(status)
+
+    def _add_start_button(self):
+        """Add start game button for host"""
+        if hasattr(self, 'lobby_start_button'):
+            return
+        
+        self.lobby_start_button = Gtk.Button(label="Start Game")
+        self.lobby_start_button.get_style_context().add_class("suggested-action")
+        self.lobby_start_button.connect("clicked", self._start_network_game)
+        self.lobby_box.pack_start(self.lobby_start_button, False, False, 10)
+        self.lobby_box.show_all()
+
+    def _start_network_game(self, widget):
+        """Start the network game (host only)"""
+        print("Starting network game...")
 
 from gi.repository import GLib
 

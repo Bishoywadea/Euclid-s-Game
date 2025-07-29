@@ -39,8 +39,15 @@ class Euclids(activity.Activity):
         self._read_file_called = False
         
         self._create_toolbar()
+
+        self._collab = CollabWrapper(self)
+        self._collab.connect('joined', self.__joined_cb)
+        self._collab.connect('buddy_joined', self.__buddy_joined_cb)
+        self._collab.connect('buddy_left', self.__buddy_left_cb)
+        self._collab.connect('message', self.__message_cb)
         
         self.game = Game()
+        self.game.set_collab_wrapper(self._collab)
         
         game_content = self.game.main_box
         if game_content.get_parent():
@@ -233,3 +240,27 @@ class Euclids(activity.Activity):
         if hasattr(self.game, 'quit'):
             self.game.quit()
         super(Euclids, self).close()
+    
+    def __joined_cb(self, collab):
+        """Called when we join a shared activity"""
+        print("DEBUG: Joined shared activity")
+        if self.game:
+            self.game.on_collaboration_joined()
+
+    def __buddy_joined_cb(self, collab, buddy):
+        """Called when another user joins"""
+        print(f"DEBUG: Buddy joined: {buddy.props.nick}")
+        if self.game:
+            self.game.on_buddy_joined(buddy)
+
+    def __buddy_left_cb(self, collab, buddy):
+        """Called when another user leaves"""
+        print(f"DEBUG: Buddy left: {buddy.props.nick}")
+        if self.game:
+            self.game.on_buddy_left(buddy)
+
+    def __message_cb(self, collab, buddy, message):
+        """Called when we receive a message"""
+        print(f"DEBUG: Message from {buddy.props.nick}: {message}")
+        if self.game:
+            self.game.on_message_received(buddy, message)
