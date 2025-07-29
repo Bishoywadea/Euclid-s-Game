@@ -1,3 +1,20 @@
+# This file is part of the Euclid's game.
+# Copyright (C) 2025 Bishoy Wadea
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk
@@ -12,6 +29,7 @@ class Difficulty(Enum):
 class GameMode(Enum):
     VS_BOT = 1
     LOCAL_MULTIPLAYER = 2
+    NETWORK_MULTIPLAYER = 3
 
 class Bot:
     def __init__(self, difficulty):
@@ -155,13 +173,17 @@ class Game(Gtk.Window):
         mode_label = Gtk.Label(label="Select Game Mode:")
         self.menu_box.pack_start(mode_label, False, False, 0)
         
-        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.vs_bot_radio = Gtk.RadioButton.new_with_label(None, "VS Bot")
         self.vs_human_radio = Gtk.RadioButton.new_with_label_from_widget(
             self.vs_bot_radio, "VS Human"
         )
+        self.vs_network_radio = Gtk.RadioButton.new_with_label_from_widget(
+            self.vs_bot_radio, "VS Human (Network)"
+        )
         mode_box.pack_start(self.vs_bot_radio, False, False, 0)
         mode_box.pack_start(self.vs_human_radio, False, False, 0)
+        mode_box.pack_start(self.vs_network_radio, False, False, 0)
         self.menu_box.pack_start(mode_box, False, False, 0)
         
         self.difficulty_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
@@ -290,9 +312,11 @@ class Game(Gtk.Window):
             else:
                 self.difficulty = Difficulty.EXPERT
             self.bot = Bot(self.difficulty)
-        else:
+        elif self.vs_human_radio.get_active():
             self.game_mode = GameMode.LOCAL_MULTIPLAYER
-        
+        else:
+            self.game_mode = GameMode.NETWORK_MULTIPLAYER
+
         self.reset_game()
         self.show_game()
     
@@ -341,7 +365,7 @@ class Game(Gtk.Window):
             return
         
         if self.current_player == 2 and self.game_mode == GameMode.VS_BOT:
-            return  # Don't allow clicks during bot's turn
+            return
         
         if number in self.selected_numbers:
             self.selected_numbers.remove(number)
