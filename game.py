@@ -148,6 +148,20 @@ class Game(Gtk.Window):
             font-size: 10pt;
             padding: 2px;
         }
+
+        .player1_move {
+            color: #d32f2f;  /* Red for player 1 */
+            font-weight: bold;
+        }
+        
+        .player2_move {
+            color: #1976d2;  /* Blue for player 2 */
+            font-weight: bold;
+        }
+        
+        .number_button:disabled {
+            opacity: 0.6;
+        }
         """
         css_provider.load_from_data(css)
         Gtk.StyleContext.add_provider_for_screen(
@@ -365,6 +379,10 @@ class Game(Gtk.Window):
                 if i in self.selected_numbers:
                     button.get_style_context().add_class("number_button_selected")
                 
+                if (self.game_mode == GameMode.NETWORK_MULTIPLAYER and 
+                    self.current_player != self.my_player_number):
+                    button.set_sensitive(False)
+                
                 button.connect("clicked", self.on_number_clicked, i)
                 self.numbers_grid.add(button)
         
@@ -509,8 +527,14 @@ class Game(Gtk.Window):
                 self.turn_label.set_markup("<b>Your Turn</b>")
             else:
                 self.turn_label.set_markup("<b>Bot's Turn</b>")
-        else:
+        elif self.game_mode == GameMode.LOCAL_MULTIPLAYER:
             self.turn_label.set_markup(f"<b>Player {self.current_player}'s Turn</b>")
+        elif self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            if self.current_player == self.my_player_number:
+                self.turn_label.set_markup("<b>Your Turn</b>")
+            else:
+                opponent_name = self.opponent_buddy.props.nick if self.opponent_buddy else "Opponent"
+                self.turn_label.set_markup(f"<b>{opponent_name}'s Turn</b>")
     
     def update_stats(self):
         valid_moves = self.count_valid_moves()
@@ -897,10 +921,22 @@ Valid Moves Left: {valid_moves}"""
     def on_message_received(self, buddy, message):
         """Handle incoming collaboration messages"""
         action = message.get('action')
+        print(f"Received message: {action} from {buddy.props.nick}")
         
         if action == 'player_ready':
             if self.is_host and not self.game_started:
                 print(f"Player {message.get('player_nick')} is ready")
+        
+        elif action == 'game_start':
+            if not self.is_host and not self.game_started:
+                print("Received game start signal from host")
+                self.game_started = True
+                self.opponent_buddy = buddy
+                
+                self._init_network_game(message)
+        
+        elif action == 'move':
+            pass
 
     def update_lobby_status(self, status):
         """Update the lobby status message"""
@@ -930,7 +966,100 @@ Valid Moves Left: {valid_moves}"""
         print("Host starting network game...")
         self.game_started = True
         
-        print("Ready to initialize game and send data to opponent")
+        num1 = random.randint(20, 40)
+        num2 = random.randint(60, 80)
+        
+        initial_state = {
+            'action': 'game_start',
+            'active_numbers': [num1, num2],
+            'current_player': 1,
+            'host_player': 1,
+            'guest_player': 2
+        }
+        
+        if self._collab:
+            print(f"Sending initial state: {initial_state}")
+            self._collab.post(initial_state)
+        
+        self._init_network_game(initial_state)
+    
+    def _init_network_game(self, initial_state):
+        """Initialize the network game with given state"""
+        print(f"Initializing network game with state: {initial_state}")
+        
+        self.active_numbers = initial_state['active_numbers'].copy()
+        self.selected_numbers = []
+        self.current_player = initial_state['current_player']
+        self.game_over = False
+        self.winner = None
+        self.move_history = []
+        
+        for child in self.numbers_grid.get_children():
+            self.numbers_grid.remove(child)
+        
+        for child in self.history_box.get_children():
+            self.history_box.remove(child)
+        
+        self.show_game()
+        
+        self.update_board()
+        self.update_turn_label()
+        self.update_stats()
+        self.update_selection_display()
+        
+        if self.is_host:
+            self._show_game_start_message("You are Player 1 (Red). You start!")
+        else:
+            self._show_game_start_message("You are Player 2 (Blue). Waiting for Player 1...")
+    
+    def _show_game_start_message(self, message):
+        """Show a temporary message when game starts"""
+        dialog = Gtk.MessageDialog(
+            parent=self,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text="Game Started!"
+        )
+        dialog.format_secondary_text(message)
+        dialog.run()
+        dialog.destroy()
+
+    def get_data(self):
+        """CollabWrapper calls this to get state when someone joins mid-game"""
+        if hasattr(self.game, 'get_game_state_for_sync'):
+            return self.game.get_game_state_for_sync()
+        return {}
+
+    def set_data(self, data):
+        """CollabWrapper calls this to set state when joining mid-game"""
+        if hasattr(self.game, 'set_game_state_from_sync'):
+            self.game.set_game_state_from_sync(data)
+
+    def get_game_state_for_sync(self):
+        """Get current game state for syncing with joining player"""
+        if self.game_mode != GameMode.NETWORK_MULTIPLAYER or not self.game_started:
+            return {}
+        
+        return {
+            'game_in_progress': True,
+            'active_numbers': self.active_numbers.copy(),
+            'current_player': self.current_player,
+            'move_history': self.move_history.copy(),
+            'host_player': 1,
+            'guest_player': 2
+        }
+
+    def set_game_state_from_sync(self, data):
+        """Set game state when joining a game in progress"""
+        if data.get('game_in_progress'):
+            print("Joining game in progress...")
+            self.game_mode = GameMode.NETWORK_MULTIPLAYER
+            self.is_host = False
+            self.my_player_number = 2
+            self.game_started = True
+            
+            self._init_network_game(data)
 
 from gi.repository import GLib
 
