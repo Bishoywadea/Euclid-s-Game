@@ -17,7 +17,7 @@
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+from gi.repository import Gtk, Gdk
 import time
 from gi.repository import GLib
 from sugar3.activity import activity
@@ -66,14 +66,12 @@ class Euclids(activity.Activity):
     
     def _setup_collab(self):
         """Setup collaboration after everything is initialized"""
-        print("DEBUG: Setting up collaboration")
         self._collab.setup()
         return False
     
     def _check_and_show_menu(self):
         """Show menu only if we haven't loaded from journal"""
         if not self._read_file_called:
-            print("DEBUG: No journal file to load, showing menu")
             self.game.show_menu()
         else:
             print("DEBUG: Journal file is being loaded, not showing menu")
@@ -110,6 +108,138 @@ class Euclids(activity.Activity):
         self.game.show_menu()
     
     def _show_help(self, button):
+        """Show the help dialog when help button is clicked."""
+        help_message = """About Euclid's Game:
+Euclid's Game is a mathematical strategy game based on the Euclidean algorithm for finding the greatest common divisor. It's a game of logic, planning, and mathematical reasoning.
+
+How to Play:
+1. The game starts with two positive integers on the board
+2. Players take turns selecting two numbers from the board
+3. When you select two numbers, their positive difference is automatically added to the board (if it's not already there)
+4. You cannot select the same number twice in one turn
+5. The player who cannot make a valid move loses the game
+
+Game Objective:
+Force your opponent into a position where no more moves are possible. The last player to make a valid move wins!
+
+Game Modes:
+• Single Player: Play against an AI opponent
+• Two Player: Play with a friend on the same device
+• Collaborative: Share the game with other Sugar users over the network
+"""
+        
+        self._show_dialog("Euclid's Game Help", help_message)
+
+    def _show_dialog(self, title, message):
+        """Show custom help dialog with Sugar styling"""
+        try:
+            from sugar3.graphics import style
+            parent_window = self.get_toplevel()
+            
+            dialog = Gtk.Window()
+            dialog.set_title(title)
+            dialog.set_modal(True)
+            dialog.set_decorated(False)
+            dialog.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
+            dialog.set_border_width(style.LINE_WIDTH)
+            dialog.set_transient_for(parent_window)
+            
+            dialog_width = min(700, max(500, self.get_allocated_width() * 3 // 4))
+            dialog_height = min(600, max(400, self.get_allocated_height() * 3 // 4))
+            dialog.set_size_request(dialog_width, dialog_height)
+            
+            main_vbox = Gtk.VBox()
+            main_vbox.set_border_width(style.DEFAULT_SPACING)
+            dialog.add(main_vbox)
+            
+            header_box = Gtk.HBox()
+            header_box.set_spacing(style.DEFAULT_SPACING)
+            
+            title_label = Gtk.Label()
+            title_label.set_markup(f'<span size="large" weight="bold">🔢 {title}</span>')
+            header_box.pack_start(title_label, True, True, 0)
+            
+            close_button = Gtk.Button()
+            close_button.set_relief(Gtk.ReliefStyle.NONE)
+            close_button.set_size_request(40, 40)
+            
+            try:
+                from sugar3.graphics.icon import Icon
+                close_icon = Icon(icon_name='dialog-cancel', pixel_size=24)
+                close_button.add(close_icon)
+            except:
+                close_label = Gtk.Label()
+                close_label.set_markup('<span size="x-large" weight="bold">✕</span>')
+                close_button.add(close_label)
+            
+            close_button.connect('clicked', lambda b: dialog.destroy())
+            header_box.pack_end(close_button, False, False, 0)
+            
+            main_vbox.pack_start(header_box, False, False, 0)
+            
+            separator = Gtk.HSeparator()
+            main_vbox.pack_start(separator, False, False, style.DEFAULT_SPACING)
+            
+            scrolled = Gtk.ScrolledWindow()
+            scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            scrolled.set_hexpand(True)
+            scrolled.set_vexpand(True)
+            
+            content_label = Gtk.Label()
+            content_label.set_text(message)
+            content_label.set_halign(Gtk.Align.START)
+            content_label.set_valign(Gtk.Align.START)
+            content_label.set_line_wrap(True)
+            content_label.set_max_width_chars(90)
+            content_label.set_selectable(True)
+            content_label.set_margin_left(15)
+            content_label.set_margin_right(15)
+            content_label.set_margin_top(15)
+            content_label.set_margin_bottom(15)
+            
+            scrolled.add(content_label)
+            main_vbox.pack_start(scrolled, True, True, 0)
+            
+            try:
+                css_provider = Gtk.CssProvider()
+                css_data = """
+                window {
+                    background-color: #ffffff;
+                    border: 3px solid #4A90E2;
+                    border-radius: 12px;
+                }
+                label {
+                    color: #333333;
+                }
+                button {
+                    border-radius: 20px;
+                }
+                button:hover {
+                    background-color: rgba(74, 144, 226, 0.1);
+                }
+                scrolledwindow {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                }
+                """.encode('utf-8')
+                
+                css_provider.load_from_data(css_data)
+                style_context = dialog.get_style_context()
+                style_context.add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            except Exception as css_error:
+                print(f"CSS styling failed: {css_error}")
+            
+            dialog.show_all()
+            
+            dialog.connect('key-press-event', 
+                        lambda d, e: d.destroy() if Gdk.keyval_name(e.keyval) == 'Escape' else False)
+            
+        except Exception as e:
+            print(f"Error showing help dialog: {e}")
+            self._show_simple_help_fallback()
+
+    def _show_simple_help_fallback(self):
+        """Simple fallback help dialog if custom dialog fails"""
         dialog = Gtk.MessageDialog(
             parent=self,
             flags=0,
@@ -128,7 +258,6 @@ class Euclids(activity.Activity):
     
     def read_file(self, file_path):
         """Load game state from Journal"""
-        print(f"DEBUG: read_file called with path: {file_path}")
         
         self._read_file_called = True
         
@@ -139,35 +268,25 @@ class Euclids(activity.Activity):
         
         try:
             file_stats = os.stat(file_path)
-            print(f"DEBUG: File size: {file_stats.st_size} bytes")
-            print(f"DEBUG: File modified: {time.ctime(file_stats.st_mtime)}")
             
             with open(file_path, 'r') as f:
                 content = f.read()
-                print(f"DEBUG: Read {len(content)} characters from file")
                 
                 try:
                     data = json.loads(content)
-                    print(f"DEBUG: Successfully parsed JSON")
-                    print(f"DEBUG: Top-level keys: {list(data.keys())}")
                 except json.JSONDecodeError as e:
                     print(f"ERROR: JSON parsing failed: {e}")
-                    print(f"DEBUG: First 200 chars of content: {content[:200]}")
                     self.game.show_menu()
                     return
             
             loaded_metadata = data.get('metadata', {})
-            print(f"DEBUG: Metadata: {loaded_metadata}")
             
             game_state = data.get('game_state', {})
             if game_state:
-                print(f"DEBUG: Game state found with keys: {list(game_state.keys())}")
                 
                 if hasattr(self.game, 'load_state'):
-                    print("DEBUG: Loading game state immediately")
                     if self.game.load_state(game_state):
                         self._loaded_from_journal = True
-                        print("DEBUG: Game state loaded successfully")
                     else:
                         print("ERROR: game.load_state() returned False")
                         self.game.show_menu()
@@ -189,7 +308,6 @@ class Euclids(activity.Activity):
 
     def write_file(self, file_path):
         """Save game state to Journal"""
-        print(f"DEBUG: write_file called with path: {file_path}")
         
         try:
             data = {
@@ -203,18 +321,13 @@ class Euclids(activity.Activity):
             }
             
             if hasattr(self.game, 'save_state'):
-                print("DEBUG: Calling game.save_state()")
                 game_state = self.game.save_state()
-                print(f"DEBUG: Got game state with keys: {list(game_state.keys()) if game_state else 'None'}")
                 data['game_state'] = game_state
             else:
                 print("ERROR: game object doesn't have save_state method")
             
             try:
-                print("DEBUG: Serializing data to JSON")
                 json_string = json.dumps(data, indent=2)
-                print(f"DEBUG: Data keys: {json_string}")
-                print(f"DEBUG: JSON serialization successful, length: {len(json_string)}")
             except Exception as e:
                 print(f"ERROR: JSON serialization failed: {e}")
                 return
@@ -223,16 +336,11 @@ class Euclids(activity.Activity):
                 f.write(json_string)
                 f.flush()
                 os.fsync(f.fileno())
-                
-            print(f"DEBUG: File written successfully")
-            
             if os.path.exists(file_path):
                 file_size = os.path.getsize(file_path)
-                print(f"DEBUG: Verified file exists, size = {file_size} bytes")
                 
                 with open(file_path, 'r') as f:
                     verify_content = f.read()
-                    print(f"DEBUG: Verified content length = {len(verify_content)}")
             else:
                 print("ERROR: File doesn't exist after writing!")
                 
@@ -253,28 +361,21 @@ class Euclids(activity.Activity):
     
     def __joined_cb(self, collab):
         """Called when we join a shared activity"""
-        print("DEBUG: Joined shared activity")
         if self.game:
             self.game.on_collaboration_joined()
 
     def __buddy_joined_cb(self, collab, buddy):
         """Called when another user joins"""
-        print(f"DEBUG: Buddy joined: {buddy.props.nick}")
         if self.game:
             self.game.on_buddy_joined(buddy)
 
     def __buddy_left_cb(self, collab, buddy):
         """Called when another user leaves"""
-        print(f"DEBUG: Buddy left: {buddy.props.nick}")
         if self.game:
             self.game.on_buddy_left(buddy)
 
     def __message_cb(self, collab, buddy, message):
         """Called when we receive a message"""
-        print(f"DEBUG: __message_cb called")
-        print(f"DEBUG: From buddy: {buddy.props.nick}")
-        print(f"DEBUG: Message content: {message}")
-        print(f"DEBUG: Message type: {type(message)}")
         
         if self.game:
             self.game.on_message_received(buddy, message)
@@ -283,16 +384,12 @@ class Euclids(activity.Activity):
     
     def get_data(self):
         """Called by CollabWrapper when someone joins to get current state"""
-        print("DEBUG: get_data called")
         if hasattr(self.game, 'get_game_state_for_sync'):
             data = self.game.get_game_state_for_sync()
-            print(f"DEBUG: Returning game state: {data}")
             return data
         return {}
 
     def set_data(self, data):
         """Called by CollabWrapper when joining to receive current state"""
-        print(f"DEBUG: set_data called with: {data}")
         if data and hasattr(self.game, 'set_game_state_from_sync'):
             self.game.set_game_state_from_sync(data)
-            
